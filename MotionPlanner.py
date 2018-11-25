@@ -17,18 +17,19 @@ class MotionPlanner():
     def __init__(self):
         # Global variables
         self.timeReset = False
-        self.end = [40, 45, 1]                                    # x, y, z
-        self.start = [90, 60, 1]                                      # x, y, z
-        self.target = [55, 55, 1]                                   # x, y, z
+        self.end = [15, 90, 1]                                    # x, y, z
+        self.start = [180, 140, 1]                                      # x, y, z
+        self.target = [130, 110, 1]                                   # x, y, z
         self.currentPose = [0, 0, 0]                                # x, y, z
-        self.mapSize = [100, 100]                                   # Size of the world
+        self.mapSize = [200, 200]                                   # Size of the world
         self.world = np.zeros((self.mapSize[0],self.mapSize[0]))    # Create an empty world 
         self.startTime = 0.0                                        # Start time of motion
         self.cycleTime = 0.1                                        # Allows the main loop to run once every X seconds
         self.motionTime = 10.0                                      # Total time to complete motion in seconds
         self.angularChange = 0.0                                    # Angle between start and end with centerpoint at target
         self.clockwise = True
-        self.printouts = True
+        self.printouts = False
+        self.arc = []
         
         #rospy.init_node('quad_motion', anonymous=True)
         #velocity_publisher = rospy.Publisher('/command/twist', Twist, queue_size=10)
@@ -53,30 +54,84 @@ class MotionPlanner():
         
         #velocity_publisher.publish(vel_msg)
         #rospy.Timer(rospy.Duration(cycleTime), timerEvent)
-        #angularChange = planarAngle()    
-        self.startTime = rospy.get_time()
+        #angularChange = planarAngle()
+        #self.startTime = rospy.get_time()
+        self.addSquare([170,35], 20)
+        self.addCircle([65,45], 30)
+        
+        
+    def addSquare(self, pos, size):
+        halfSize = int(size/2)
+        for x in range((-halfSize), halfSize):
+            for y in range((-halfSize), halfSize):
+                self.world[(pos[0]+x),(pos[1]+y)] = 1
+                
+    def addCircle(self, pos, rad):
+        for x in range((-rad), rad):
+            for y in range((-rad), rad):
+                point  = [(pos[0] + x), (pos[1] + y)]
+                if self.planarDist(pos, point) <= rad:
+                    self.world[(pos[0]+x),(pos[1]+y)] = 1
         
         
     # Performs the motion control calculations    
     def motionControl(self):
-        arc = self.createPlanarArc()
+        self.arc = self.createPlanarArc()
+        disc = self.processArc(self.arc)
         #self.elapsedTime = rospy.get_time() - startTime
         
-        solution = self.aStar()
+        solutions = []
+        print(len(disc))
+        for a in disc:
+            print("Start: " + str(a.start))
+            print("End: " + str(a.end))
+            solutions.append(self.aStar(a))
         
-        self.plotMotion(arc, solution)
+        #solution = self.aStar()
+        
+        self.plotMotion(solutions)
         #vel_msg.angular.z = angularChange / motionTime  #Rotation velocity is constant for now
     
 
-    def heuristic(self, a):
-        return abs(self.end[0] - a[0]) + abs(self.end[1] - a[1])
+    def processArc(self, arc):
+        freeSpace = []
+        discontinuities = []
+        gap = False
+        start = arc[0]
+        end = arc[(len(arc)-1)]
+        self.arc = []
+        
+        for a in range(0,len(arc)):       
+        
+            rounded = [int(round(arc[a][0])), int(round(arc[a][1]))]
+            
+            
+            if self.world[rounded[0], rounded[1]] != 1:
+                if not gap:
+                    start = rounded
+                    self.arc.append(arc[a])
+                
+                else:
+                    end = rounded
+                    self.arc.append(arc[a])
+                    disc = Disc(start, end)
+                    discontinuities.append(disc)
+                    gap = False
+                
+            else:
+                gap = True
+
+        return discontinuities
+                
+            
+        
     
-    def aStar(self):
+    def aStar(self, gap):
         open = []
         closed = []
 
-        startNode = Node(self.start[0], self.start[1])
-        endNode = Node(self.end[0], self.end[1])
+        startNode = Node(gap.start[0], gap.start[1])
+        endNode = Node(gap.end[0], gap.end[1])
         
         open.append(startNode)
         
@@ -96,7 +151,7 @@ class MotionPlanner():
             open.pop(currIndex)
             closed.append(currNode)
             
-            if currNode.pos[0] == self.end[0] and currNode.pos[1] == self.end[1]:
+            if currNode.pos[0] == gap.end[0] and currNode.pos[1] == gap.end[1]:
                 solution = []
                 curr = currNode
                 while True:
@@ -107,7 +162,7 @@ class MotionPlanner():
                             break
                     if curr.parent == [None, None]:
                         break
-                print("Solution Found")    
+                print("A* Solution Found")    
                 return solution
 
             for i, j, k in neighbors:  
@@ -128,41 +183,45 @@ class MotionPlanner():
                     if a.pos == newNode.pos:
                         inClosed = True
                         break
-                if inClosed:
-                    continue
-                        
-                newNode.g = currNode.g + k
-                newNode.h = self.heuristic(newNode.pos)
-                newNode.f = newNode.g + newNode.h
-                
-                inOpen = False
-                for index, item in enumerate(open):
-                    if item.pos == newNode.pos:
-                        if newNode.g < item.g:
-                            open[index] = newNode
-                            inOpen = True
-                            break
-                if not inOpen:
-                    open.append(newNode)
+                if not inClosed:
 
+                    newNode.g = currNode.g + k
+                    newNode.h = self.planarDist(gap.end, newNode.pos)
+                    newNode.f = newNode.g + newNode.h
+
+                    inOpen = False
+                    for index, item in enumerate(open):
+                        if item.pos == newNode.pos:
+                            if newNode.g <= item.g:                                
+                                open.pop(index)
+                                break
+                            else:
+                                inOpen = True
+                                break
+                    if not inOpen:                        
+                        open.append(newNode)
+                        #plt.plot(newNode.pos[0], newNode.pos[1], 'm.')
+
+            #if len(open) % 100 == 0:
+                        #plt.pause(0.01)
 
     
     # Creates a 2-D top-down view of the motion path
     # https://matplotlib.org/gallery/color/colormap_reference.html
-    def plotMotion(self, path, solution):
+    def plotMotion(self, solutions):
         plt.clf()
-        plt.imshow(self.world, cmap=cm.magma)
+        plt.imshow(self.world.T, cmap=cm.magma)
         plt.gca().invert_yaxis()
         plt.plot(self.start[0], self.start[1], 'yo')
         plt.plot(self.target[0], self.target[1], 'go')
         plt.xlabel("x-axis")
         plt.ylabel("y-axis")
-        for a in path:
+        for a in self.arc:
             plt.plot(a[0], a[1], 'r.')
             #plt.pause(0.01 * self.cycleTime)
-
-        for b in solution:
-            plt.plot(b[0], b[1], 'm.')
+        for c in solutions:
+            for b in c:
+                plt.plot(b[0], b[1], 'm.')
             
         plt.plot(self.end[0], self.end[1], 'yo')
         plt.show()
@@ -175,7 +234,8 @@ class MotionPlanner():
         radStart = self.planarDist(self.start, self.target)     #Radius about the target at the start of the arc
         radEnd = self.planarDist(self.end, self.target)         #Radius about the target at the end of the arc
         radDelt = radEnd - radStart                             #Difference between radii
-        print("Radius: " + str(radStart) + ", " + str(radEnd)) if self.printouts else None
+        if self.printouts:
+            print("Radius: " + str(radStart) + ", " + str(radEnd))
         
         radDeltPerSec = radDelt / self.motionTime
         thetaStart = self.worldPlanarAngle(self.start, self.target)
@@ -195,7 +255,9 @@ class MotionPlanner():
                 thetaDelt  = thetaEnd - thetaStart 
 
         thetaDeltPerSec = thetaDelt / self.motionTime
-        print("Theta: " + str(thetaStart) + ", " + str(thetaEnd) + ", "  + str(thetaDelt)) if self.printouts else None
+        
+        if self.printouts:
+            print("Theta: " + str(thetaStart) + ", " + str(thetaEnd) + ", "  + str(thetaDelt))
         
         for a in range(0, int(self.motionTime / self.cycleTime)):
             t = a * self.cycleTime
@@ -210,9 +272,9 @@ class MotionPlanner():
                 
             x = round(((math.cos (tempTheta) * tempRad) + self.target[0]), 3)
             y = round(((math.sin(tempTheta) * tempRad) + self.target[1]), 3)
-            path.append([x, y, t])
-            if a%10 == 0:
-                print("[X, Y, theta, T]: " + str(x) + ", " + str(y) + ", " + str(tempTheta) + ", " + str(t))  if self.printouts else None
+            path.append([x, y, tempTheta, t])
+            if a%10 == 0 and self.printouts:
+                print("[X, Y, theta, T]: " + str(x) + ", " + str(y) + ", " + str(tempTheta) + ", " + str(t))
                 
         path.append([self.end[0], self.end[1], self.motionTime])    
         return path
@@ -335,12 +397,25 @@ class Node():
     def __init__(self, x, y):
         self.pos = [x, y]
         self.z = 1.0
-        self.g = 0
-        self.h = 0
-        self.f = 0
+        self.g = 0.0
+        self.h = 0.0
+        self.f = 0.0
         self.cost = 0.0
         self.parent = [None, None]        
-    
+ 
+ 
+'''
+#################################
+###### Discontinuity Class ######
+#################################
+'''    
+
+class Disc():
+    def __init__(self, a, b):
+        self.start = [a[0], a[1]]
+        self.end = [b[0], b[1]]
+
+        
 '''    
 ####################################################################  
 ########################### Main Function ##########################
@@ -349,7 +424,7 @@ class Node():
     
 if __name__ == '__main__':
     mp = MotionPlanner()
-    #mp.setup()
+    mp.setup()
     mp.motionControl()
     #try:
     #    setup()
