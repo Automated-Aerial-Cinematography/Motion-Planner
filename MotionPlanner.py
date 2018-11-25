@@ -2,6 +2,8 @@ import sys
 import time
 import math
 #import rospy
+import heapq
+import heapq_max
 import numpy as np
 import random as rand
 import matplotlib.cm as cm
@@ -59,12 +61,95 @@ class MotionPlanner():
     def motionControl(self):
         arc = self.createPlanarArc()
         #self.elapsedTime = rospy.get_time() - startTime
-        self.plotMotion(arc)
+        
+        solution = self.aStar()
+        
+        self.plotMotion(arc, solution)
         #vel_msg.angular.z = angularChange / motionTime  #Rotation velocity is constant for now
     
+
+    def heuristic(self, a):
+        return abs(self.end[0] - a[0]) + abs(self.end[1] - a[1])
+    
+    def aStar(self):
+        open = []
+        closed = []
+
+        startNode = Node(self.start[0], self.start[1])
+        endNode = Node(self.end[0], self.end[1])
+        
+        open.append(startNode)
+        
+        a = 1.0
+        b = 1.41421
+        
+        neighbors = [(-1,1,b),(0,1,a),(1,1,b),(-1,0,a),(1,0,a),(-1,-1,b),(0,-1,a),(1,-1,b)]
+    
+        while open:
+            currNode = open[0]
+            currIndex = 0
+            for index, item in enumerate(open):
+                if item.f < currNode.f:
+                    currNode = item
+                    currIndex = index
+                        
+            open.pop(currIndex)
+            closed.append(currNode)
+            
+            if currNode.pos[0] == self.end[0] and currNode.pos[1] == self.end[1]:
+                solution = []
+                curr = currNode
+                while True:
+                    solution.append(curr.parent)
+                    for a in closed:
+                        if a.pos == curr.parent:
+                            curr = a
+                            break
+                    if curr.parent == [None, None]:
+                        break
+                print("Solution Found")    
+                return solution
+
+            for i, j, k in neighbors:  
+                adjacent = currNode.pos[0] + i, currNode.pos[1] + j            
+                
+                if adjacent[0] < 0 or adjacent[0] >= self.mapSize[0]:
+                    continue
+                if adjacent[1] < 0 or adjacent[1] >= self.mapSize[1]:
+                    continue
+                if self.world[adjacent[0],adjacent[1]] == 1:
+                    continue
+    
+                newNode = Node(adjacent[0], adjacent[1])
+                newNode.parent = currNode.pos
+                
+                inClosed = False
+                for a in closed:
+                    if a.pos == newNode.pos:
+                        inClosed = True
+                        break
+                if inClosed:
+                    continue
+                        
+                newNode.g = currNode.g + k
+                newNode.h = self.heuristic(newNode.pos)
+                newNode.f = newNode.g + newNode.h
+                
+                inOpen = False
+                for index, item in enumerate(open):
+                    if item.pos == newNode.pos:
+                        if newNode.g < item.g:
+                            open[index] = newNode
+                            inOpen = True
+                            break
+                if not inOpen:
+                    open.append(newNode)
+
+
     
     # Creates a 2-D top-down view of the motion path
-    def plotMotion(self, path):
+    # https://matplotlib.org/gallery/color/colormap_reference.html
+    def plotMotion(self, path, solution):
         plt.clf()
         plt.imshow(self.world, cmap=cm.magma)
         plt.gca().invert_yaxis()
@@ -74,7 +159,11 @@ class MotionPlanner():
         plt.ylabel("y-axis")
         for a in path:
             plt.plot(a[0], a[1], 'r.')
-            plt.pause(0.01 * self.cycleTime)        
+            #plt.pause(0.01 * self.cycleTime)
+
+        for b in solution:
+            plt.plot(b[0], b[1], 'm.')
+            
         plt.plot(self.end[0], self.end[1], 'yo')
         plt.show()
         #plt.plot()
@@ -244,11 +333,13 @@ class MotionPlanner():
 
 class Node():
     def __init__(self, x, y):
-        self.x = x
-        self.y = y
+        self.pos = [x, y]
         self.z = 1.0
+        self.g = 0
+        self.h = 0
+        self.f = 0
         self.cost = 0.0
-        self.parent = None        
+        self.parent = [None, None]        
     
 '''    
 ####################################################################  
