@@ -1,6 +1,7 @@
 import sys
 import time
 import math
+import copy
 #import rospy
 import heapq
 import heapq_max
@@ -17,11 +18,11 @@ class MotionPlanner():
     def __init__(self):
         # Global variables
         self.timeReset = False
-        self.end = [15, 90, 1]                                    # x, y, z
-        self.start = [180, 140, 1]                                      # x, y, z
-        self.target = [130, 110, 1]                                   # x, y, z
+        self.end = [180, 600, 1]                                    # x, y, z
+        self.start = [780, 740, 1]                                      # x, y, z
+        self.target = [430, 610, 1]                                   # x, y, z
         self.currentPose = [0, 0, 0]                                # x, y, z
-        self.mapSize = [200, 200]                                   # Size of the world
+        self.mapSize = [1000, 1000]                                   # Size of the world
         self.world = np.zeros((self.mapSize[0],self.mapSize[0]))    # Create an empty world 
         self.startTime = 0.0                                        # Start time of motion
         self.cycleTime = 0.1                                        # Allows the main loop to run once every X seconds
@@ -56,8 +57,8 @@ class MotionPlanner():
         #rospy.Timer(rospy.Duration(cycleTime), timerEvent)
         #angularChange = planarAngle()
         #self.startTime = rospy.get_time()
-        self.addSquare([170,35], 20)
-        self.addCircle([65,45], 30)
+        #self.addSquare([770,325], 50)
+        self.addCircle([350,350], 60)
         
         
     def addSquare(self, pos, size):
@@ -78,14 +79,22 @@ class MotionPlanner():
     def motionControl(self):
         self.arc = self.createPlanarArc()
         disc = self.processArc(self.arc)
+        failures = 0
         #self.elapsedTime = rospy.get_time() - startTime
         
         solutions = []
-        print(len(disc))
+        print("Number of discontinuities: " + str(len(disc)))
         for a in disc:
-            print("Start: " + str(a.start))
-            print("End: " + str(a.end))
-            solutions.append(self.aStar(a))
+            #print("Start: " + str(a.start))
+            #print("End: " + str(a.end))
+            while failures < 10:
+                sol = self.RRT(a)
+                if sol is not None:
+                    solutions.append(sol)
+                    print("Solution Length: " + str(len(sol)))
+                    break
+                else:
+                    failures += 1
         
         #solution = self.aStar()
         
@@ -102,15 +111,11 @@ class MotionPlanner():
         self.arc = []
         
         for a in range(0,len(arc)):       
-        
             rounded = [int(round(arc[a][0])), int(round(arc[a][1]))]
-            
-            
             if self.world[rounded[0], rounded[1]] != 1:
                 if not gap:
                     start = rounded
                     self.arc.append(arc[a])
-                
                 else:
                     end = rounded
                     self.arc.append(arc[a])
@@ -124,8 +129,154 @@ class MotionPlanner():
         return discontinuities
                 
             
+    def RRT(self, gap):
+        maxLoops = 200
+        loopNum = 0
+        self.expandDist = 25
         
-    
+        startNode = Node(int(round(gap.start[0])), int(round(gap.start[1])))
+        endNode = Node(int(round(gap.end[0])), int(round(gap.end[1])))
+                
+        self.T = [startNode]
+        path = self.generatePath() #process path
+        plt.clf()
+        plt.imshow(self.world.T, cmap=cm.magma)
+        plt.gca().invert_yaxis()
+        plt.plot(gap.start[0], gap.start[1], 'yo')
+        
+        while loopNum < maxLoops:
+            loopNum += 1
+            #Xsamp <- sample from X
+            #Xneartest <- nearest node in T to Xsamp
+            #find motion from Xnearest to Xnew in direction of Xsamp
+            #if motion is collision free:
+            #   add Xnew to T with an edge from Xnearest to Xnew
+            #   If Xnew is in Xgoal:
+            #       return path 
+            
+            xRand = self.sample(gap) #returns node with x, y position
+            xNearest, xNearestIndex = self.nearestVertex(xRand) #returns node and index in T
+            xNew = self.extend(xNearest, xRand, xNearestIndex)
+            if not self.edgeCollision(xNew):
+                plt.plot([xNew.x(), xNew.parentX()], [xNew.y(), xNew.parentY()], "r")
+                #plt.pause(0.001)
+                self.T.append(xNew) #Change this for RRT*
+                if self.planarDist(xNew.pos, endNode.pos) <= self.expandDist:
+                    #append the end node
+                    #endNode.parent = xNew.pos
+                    #self.T.append(endNode)
+                    plt.plot(gap.end[0], gap.end[1], 'yo')
+                    print("Path found!")
+                    path = self.generatePath() #process path
+                    plt.show()
+                    return path
+                    
+        print("RRT FAILED!")
+        return None
+        
+        
+    def generatePath(self):
+        # T = list of Nodes
+        ind = len(self.T) - 1
+        currentNode = self.T[ind]
+        #print(str(currentNode.parent))
+        path = []
+        a = len(self.T)
+        b = 0
+        while currentNode.parent is not [None, None] and b <= a:
+            b += 1
+            path.append(currentNode.pos)
+            currentNode = self.T[currentNode.parentInd]
+        return path
+
+    # Checks for collision in linear line between node and parent                
+    def edgeCollision(self, node):
+        if node.pos == node.parent:
+            return True
+        delta = [None, None]
+        delta[0] = int(node.x() - node.parentX())
+        delta[1] = int(node.y() - node.parentY())
+        temp = [node.x(), node.y()]
+        theta = math.atan2(delta[1], delta[0])
+        
+        if abs(delta[0]) > abs(delta[1]):
+            for a in range(0, (abs(delta[0]) + 1)):
+                temp[0] = int(node.x() + a)
+                temp[1] = int(round(node.y() + a*math.tan(theta)))                
+                if self.world[temp[0], temp[1]] == 1:
+                    return True
+        else:
+            for a in range(0, (abs(delta[1]) + 1)):
+                temp[0] = int(round(node.x() + a/math.tan(theta)))
+                temp[1] = int(node.y() + a)
+                if self.world[temp[0], temp[1]] == 1:
+                    return True
+        return False
+        
+        
+    def extend(self, nearest, rand, index):
+        theta = math.atan2((rand.y() - nearest.y()), (rand.x() - nearest.x()))
+        newNode = copy.deepcopy(nearest)
+        newNode.pos[0] += int(round(self.expandDist * math.cos(theta)))
+        
+        newNode.pos[1] += int(round(self.expandDist * math.sin(theta)))
+        newNode.parent = nearest.pos
+        newNode.parentInd = index
+        
+        if newNode.x() < 0:
+            newNode.pos[0] = 0
+        if newNode.y() < 0:
+            newNode.pos[1] = 0
+        if newNode.x() >= self.mapSize[0]:
+            newNode.pos[0] = self.mapSize[0] - 1
+        if newNode.y() >= self.mapSize[1]:
+            newNode.pos[1] = self.mapSize[1] - 1
+            
+        newNode.cost += self.planarDist(newNode.pos, newNode.parent)
+        return newNode
+        
+                    
+    def nearestVertex(self, x):
+        cost = np.inf
+        xPos = [x.x(), x.y()]
+        #ind = 0
+        for index, item in enumerate(self.T):
+            aPos = [item.x(), item.y()]
+            newCost = self.planarDist(xPos, aPos)# + item.cost
+            if newCost < cost:
+                cost = newCost
+                nearest = item
+                ind = index
+        #print("Len T: " + str(len(self.T)))
+        #print("Parent Ind: " + str(ind))
+        #print("Cost: " + str(cost))
+        return nearest, ind
+        
+                    
+    def sample(self, gap):
+        a = rand.random()
+        if a >= 0.95:
+            return Node(gap.end[0], gap.end[1])
+        center = [None, None]
+        center[0] = int(round(((gap.start[0] - gap.end[0])/ 2) + gap.start[0]))
+        center[1] = int(round(((gap.start[1] - gap.end[1])/ 2) + gap.start[1]))
+        x = rand.randint((-self.mapSize[0]), self.mapSize[0])
+        y = rand.randint((-self.mapSize[1]), self.mapSize[1])
+        x = int(round(x + center[0]))
+        y = int(round(y + center[1]))
+        #if x < 0:
+        #    x = 0
+        #if y < 0:
+        #    y = 0
+        #if x >= self.mapSize[0]:
+        #    x = self.mapSize[0] - 1
+        #if y >= self.mapSize[1]:
+        #    y = self.mapSize[1] - 1
+        newSamp = Node(x, y)
+        return newSamp
+        
+        
+        
     def aStar(self, gap):
         open = []
         closed = []
@@ -401,8 +552,21 @@ class Node():
         self.h = 0.0
         self.f = 0.0
         self.cost = 0.0
-        self.parent = [None, None]        
+        self.parent = [None, None]
+        self.parentInd = 0
+        
+    def x(self):
+        return self.pos[0]
  
+    def y(self):
+        return self.pos[1]
+        
+    def parentX(self):
+        return self.parent[0]
+        
+    def parentY(self):
+        return self.parent[1]
+            
  
 '''
 #################################
