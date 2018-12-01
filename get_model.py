@@ -5,6 +5,7 @@ from gazebo_msgs.srv import GetWorldProperties, GetModelProperties, GetModelStat
 import matplotlib as mp
 import matplotlib.pyplot as plt
 from math import *
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 #import numpy as np
 
 # Pulled from the test_simple_world.world
@@ -26,8 +27,9 @@ class gazebo_object:
         self.pos = (x,y,z)
     def set_size(self, x, y, z):
         self.size = (x,y,z)
-    def set_twist(self, x, y, z, w):
-        self.twist = (x,y,z, w)
+    def set_twist(self, _x, _y, _z, _w):
+        (x,y,z) = euler_from_quaternion([_x,_y,_z,_w])
+        self.twist = (x,y,z)
 
     def get_pos(self):
         return self.pos
@@ -77,7 +79,7 @@ class ObjectPositionCollector(object):
 
     def update_world_data(self, event):
         # TODO this will need a mutex if we use the rospy timer internally.
-        print("Updating World Data")
+       #print("Updating World Data")
         # Get the handles to the Service Proxy
         self.get_proxy_handles()
         # Get the Position Data
@@ -128,11 +130,11 @@ class ObjectPositionCollector(object):
             twist = obj.get_twist()
             r = plt.Rectangle((x, y),(scale[0]), (scale[1]), twist[2] )
             plt.gca().add_patch(r)
-        for x in range (-5, 5):
-            for y in range(-5, 5):
-                print("Checking x,y", x, y, self.get_occupancy_2d(x, y, 0.5))
+       # for x in range (-5, 5):
+        #    for y in range(-5, 5):
+         #       print("Checking x,y", x, y, self.get_occupancy_2d(x, y, 0.5))
                 
-        #plt.pause(100)
+        plt.pause(100)
     def get_occupancy_2d(self, _x, _y, radius):
         for o in self.objects:
             obj = self.objects[o]
