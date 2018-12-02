@@ -84,14 +84,14 @@ class MotionPlanner():
         
         solutions = []
         print("Number of discontinuities: " + str(len(disc)))
-        for a in disc:
+        for item in disc:
             #print("Start: " + str(a.start))
             #print("End: " + str(a.end))
-            while failures < 10:
-                sol = self.RRT(a)
+            while failures < 5:
+                sol = self.RRT(item, failures)
                 if sol is not None:
                     solutions.append(sol)
-                    print("Solution Length: " + str(len(sol)))
+                    #print("Solution Length: " + str(len(sol)))
                     break
                 else:
                     failures += 1
@@ -129,87 +129,126 @@ class MotionPlanner():
         return discontinuities
                 
             
-    def RRT(self, gap):
-        maxLoops = 200
+    def RRT(self, gap, attempt):
+        maxLoops = 2000
         loopNum = 0
-        self.expandDist = 25
+        self.expandDist = 15
+        self.expandFactor = 3
+        
+        bestSolution = None
+        bestSolutionCost = np.inf
         
         startNode = Node(int(round(gap.start[0])), int(round(gap.start[1])))
         endNode = Node(int(round(gap.end[0])), int(round(gap.end[1])))
                 
         self.T = [startNode]
-        path = self.generatePath() #process path
+        path = []#self.generatePath() #process path
         plt.clf()
         plt.imshow(self.world.T, cmap=cm.magma)
         plt.gca().invert_yaxis()
-        plt.plot(gap.start[0], gap.start[1], 'yo')
+        #plt.plot(gap.start[0], gap.start[1], 'yo')
         
         while loopNum < maxLoops:
             loopNum += 1
-            #Xsamp <- sample from X
-            #Xneartest <- nearest node in T to Xsamp
-            #find motion from Xnearest to Xnew in direction of Xsamp
-            #if motion is collision free:
-            #   add Xnew to T with an edge from Xnearest to Xnew
-            #   If Xnew is in Xgoal:
-            #       return path 
             
-            xRand = self.sample(gap) #returns node with x, y position
+            xRand = self.sample(gap, attempt) #returns node with x, y position
             xNearest, xNearestIndex = self.nearestVertex(xRand) #returns node and index in T
             xNew = self.extend(xNearest, xRand, xNearestIndex)
-            if not self.edgeCollision(xNew):
-                plt.plot([xNew.x(), xNew.parentX()], [xNew.y(), xNew.parentY()], "r")
+            if xNew == None:
+                continue
+            xNew = self.nearVert(xNew)
+            if not self.edgeCollision(xNew.pos, xNew.parent):
+                #plt.plot([xNew.x(), xNew.parentX()], [xNew.y(), xNew.parentY()], "r")
                 #plt.pause(0.001)
                 self.T.append(xNew) #Change this for RRT*
-                if self.planarDist(xNew.pos, endNode.pos) <= self.expandDist:
-                    #append the end node
-                    #endNode.parent = xNew.pos
-                    #self.T.append(endNode)
-                    plt.plot(gap.end[0], gap.end[1], 'yo')
-                    print("Path found!")
-                    path = self.generatePath() #process path
-                    plt.show()
-                    return path
+                if self.planarDist(xNew.pos, endNode.pos) <= self.expandFactor * self.expandDist:
+                    if xNew.cost < bestSolutionCost:
+                        bestSolutionCost = xNew.cost
+                        bestSolution = xNew
                     
-        print("RRT FAILED!")
-        return None
+                    #print("Path found!")
+                    #path = self.generatePath()
+                    #plt.show()
+                    #return path
+        path = self.generatePath(bestSolution)
+        if path != []:
+            print("RRT SOLUTION FOUND")
+            #plt.plot(gap.end[0], gap.end[1], 'yo')
+            #plt.show()
+            return path            
+        else:
+            print("RRT FAILED!")
+            return None
         
         
-    def generatePath(self):
+    def nearVert(self, node):
+        cost = np.inf
+        for index, item in enumerate(self.T):
+            dist = self.planarDist(node.pos, item.pos)
+            if  dist <= self.expandFactor * self.expandDist:
+                newCost = dist + item.cost
+                if newCost < cost:
+                    cost = newCost
+                    best = item
+                    ind = index
+        if cost != np.inf:
+            node.parent = best.pos
+            node.parentInd = ind
+        return node
+        
+    def generatePath(self, node):
         # T = list of Nodes
-        ind = len(self.T) - 1
-        currentNode = self.T[ind]
+
+        #ind = len(self.T) - 1
+        if node == None:
+            return []
+        currentNode = node
         #print(str(currentNode.parent))
         path = []
         a = len(self.T)
         b = 0
-        while currentNode.parent is not [None, None] and b <= a:
+        while currentNode.parentInd is not [None, None] and b <= a:
             b += 1
             path.append(currentNode.pos)
             currentNode = self.T[currentNode.parentInd]
         return path
 
     # Checks for collision in linear line between node and parent                
-    def edgeCollision(self, node):
-        if node.pos == node.parent:
+    def edgeCollision(self, nodePos, parentPos):
+        if nodePos == parentPos:
             return True
         delta = [None, None]
-        delta[0] = int(node.x() - node.parentX())
-        delta[1] = int(node.y() - node.parentY())
-        temp = [node.x(), node.y()]
+        dir = [1, 1]
+        delta[0] = int(parentPos[0] - nodePos[0])
+        delta[1] = int(parentPos[1] - nodePos[1])
+        if delta[0] < 0:
+            dir[0] = -1
+        if delta[1] < 0:
+            dir[1] = -1
+
+        temp = [None, None]
         theta = math.atan2(delta[1], delta[0])
-        
+        #print(" ")
+        #print("Node: " + str(nodePos))
+        #print("Parent: " + str(parentPos))
+        #print("Delta: " + str(delta))
         if abs(delta[0]) > abs(delta[1]):
-            for a in range(0, (abs(delta[0]) + 1)):
-                temp[0] = int(node.x() + a)
-                temp[1] = int(round(node.y() + a*math.tan(theta)))                
+            for a in range(dir[0], (delta[0]+dir[0]), dir[0]):# + 1)):
+                #print("a: " + str(a))
+                temp[0] = int(nodePos[0] + a)
+                temp[1] = int(nodePos[1] + round(a*math.tan(theta)))
+                #print("Temp: " + str(temp))
                 if self.world[temp[0], temp[1]] == 1:
+                    #print("Collision")
                     return True
         else:
-            for a in range(0, (abs(delta[1]) + 1)):
-                temp[0] = int(round(node.x() + a/math.tan(theta)))
-                temp[1] = int(node.y() + a)
+            for a in range(dir[0], (delta[1]+dir[0]), dir[1]):#  + 1)):
+                #print("a: " + str(a))
+                temp[0] = int(nodePos[0] + round(a/math.tan(theta)))
+                temp[1] = int(nodePos[1] + a)
+                #print("Temp: " + str(temp))
                 if self.world[temp[0], temp[1]] == 1:
+                    #print("Collision")
                     return True
         return False
         
@@ -223,14 +262,19 @@ class MotionPlanner():
         newNode.parent = nearest.pos
         newNode.parentInd = index
         
-        if newNode.x() < 0:
-            newNode.pos[0] = 0
-        if newNode.y() < 0:
-            newNode.pos[1] = 0
-        if newNode.x() >= self.mapSize[0]:
-            newNode.pos[0] = self.mapSize[0] - 1
-        if newNode.y() >= self.mapSize[1]:
-            newNode.pos[1] = self.mapSize[1] - 1
+        #if newNode.x() < 0:
+        #    newNode.pos[0] = 0
+        #if newNode.y() < 0:
+        #    newNode.pos[1] = 0
+        #if newNode.x() >= self.mapSize[0]:
+        #    newNode.pos[0] = self.mapSize[0] - 1
+        #if newNode.y() >= self.mapSize[1]:
+        #    newNode.pos[1] = self.mapSize[1] - 1
+        
+        if newNode.x() < 0 or newNode.y() < 0:
+            return None
+        if newNode.x() >= self.mapSize[0] or  newNode.y() >= self.mapSize[1]:
+            return None
             
         newNode.cost += self.planarDist(newNode.pos, newNode.parent)
         return newNode
@@ -238,11 +282,9 @@ class MotionPlanner():
                     
     def nearestVertex(self, x):
         cost = np.inf
-        xPos = [x.x(), x.y()]
         #ind = 0
         for index, item in enumerate(self.T):
-            aPos = [item.x(), item.y()]
-            newCost = self.planarDist(xPos, aPos)# + item.cost
+            newCost = self.planarDist(x.pos, item.pos)
             if newCost < cost:
                 cost = newCost
                 nearest = item
@@ -253,15 +295,31 @@ class MotionPlanner():
         return nearest, ind
         
                     
-    def sample(self, gap):
+    def sample(self, gap, attempt):
         a = rand.random()
         if a >= 0.95:
             return Node(gap.end[0], gap.end[1])
         center = [None, None]
-        center[0] = int(round(((gap.start[0] - gap.end[0])/ 2) + gap.start[0]))
-        center[1] = int(round(((gap.start[1] - gap.end[1])/ 2) + gap.start[1]))
-        x = rand.randint((-self.mapSize[0]), self.mapSize[0])
-        y = rand.randint((-self.mapSize[1]), self.mapSize[1])
+        delta = [None, None]
+        center[0] = int(round(((gap.end[0] - gap.start[0]) * 0.5) + gap.start[0]))
+        center[1] = int(round(((gap.end[1] - gap.start[1]) * 0.5) + gap.start[1]))
+        
+        delta[0] = abs(gap.start[0] - gap.end[0])
+        delta[1] = abs(gap.start[1] - gap.end[1])
+        
+        if delta[0] > delta[1]:
+            area = delta[0] + (attempt * delta[0] * 0.25)
+        else:
+            area = delta[1] + (attempt * delta[1] * 0.25)
+            
+        #print("Center: " + str(center))
+        #print("Delta: " + str(delta))
+        #print("Area: " + str(area))
+        
+        #x = rand.randint((-self.mapSize[0]), self.mapSize[0])
+        #y = rand.randint((-self.mapSize[1]), self.mapSize[1])
+        x = rand.randint((-area), area)
+        y = rand.randint((-area), area)
         x = int(round(x + center[0]))
         y = int(round(y + center[1]))
         #if x < 0:
@@ -274,87 +332,6 @@ class MotionPlanner():
         #    y = self.mapSize[1] - 1
         newSamp = Node(x, y)
         return newSamp
-        
-        
-        
-    def aStar(self, gap):
-        open = []
-        closed = []
-
-        startNode = Node(gap.start[0], gap.start[1])
-        endNode = Node(gap.end[0], gap.end[1])
-        
-        open.append(startNode)
-        
-        a = 1.0
-        b = 1.41421
-        
-        neighbors = [(-1,1,b),(0,1,a),(1,1,b),(-1,0,a),(1,0,a),(-1,-1,b),(0,-1,a),(1,-1,b)]
-    
-        while open:
-            currNode = open[0]
-            currIndex = 0
-            for index, item in enumerate(open):
-                if item.f < currNode.f:
-                    currNode = item
-                    currIndex = index
-                        
-            open.pop(currIndex)
-            closed.append(currNode)
-            
-            if currNode.pos[0] == gap.end[0] and currNode.pos[1] == gap.end[1]:
-                solution = []
-                curr = currNode
-                while True:
-                    solution.append(curr.parent)
-                    for a in closed:
-                        if a.pos == curr.parent:
-                            curr = a
-                            break
-                    if curr.parent == [None, None]:
-                        break
-                print("A* Solution Found")    
-                return solution
-
-            for i, j, k in neighbors:  
-                adjacent = currNode.pos[0] + i, currNode.pos[1] + j            
-                
-                if adjacent[0] < 0 or adjacent[0] >= self.mapSize[0]:
-                    continue
-                if adjacent[1] < 0 or adjacent[1] >= self.mapSize[1]:
-                    continue
-                if self.world[adjacent[0],adjacent[1]] == 1:
-                    continue
-    
-                newNode = Node(adjacent[0], adjacent[1])
-                newNode.parent = currNode.pos
-                
-                inClosed = False
-                for a in closed:
-                    if a.pos == newNode.pos:
-                        inClosed = True
-                        break
-                if not inClosed:
-
-                    newNode.g = currNode.g + k
-                    newNode.h = self.planarDist(gap.end, newNode.pos)
-                    newNode.f = newNode.g + newNode.h
-
-                    inOpen = False
-                    for index, item in enumerate(open):
-                        if item.pos == newNode.pos:
-                            if newNode.g <= item.g:                                
-                                open.pop(index)
-                                break
-                            else:
-                                inOpen = True
-                                break
-                    if not inOpen:                        
-                        open.append(newNode)
-                        #plt.plot(newNode.pos[0], newNode.pos[1], 'm.')
-
-            #if len(open) % 100 == 0:
-                        #plt.pause(0.01)
 
     
     # Creates a 2-D top-down view of the motion path
@@ -579,26 +556,16 @@ class Disc():
         self.start = [a[0], a[1]]
         self.end = [b[0], b[1]]
 
-        
-'''    
-####################################################################  
-########################### Main Function ##########################
-####################################################################
+          
+'''
+###############################
+##   RBE 550 Final Project   ##
+## Quadcopter Motion Planner ##
+###############################
 '''
     
 if __name__ == '__main__':
     mp = MotionPlanner()
     mp.setup()
     mp.motionControl()
-    #try:
-    #    setup()
-    #    #updateData()
-    #    createPath()
-    #    
-    #    while True:        
-    #        if timeReset:
-    #            #updateData()
-    #            motionControl()
-    #            timeReset = False
-    #    
-    #except rospy.ROSInterruptException: pass
+    
