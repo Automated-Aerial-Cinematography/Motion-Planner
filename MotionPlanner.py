@@ -2,16 +2,12 @@ import sys
 import time
 import math
 import copy
-#import rospy
 import heapq
 import heapq_max
 import numpy as np
 import random as rand
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
-#from std_msgs.msg import String
-#from geometry_msgs.msg import Twist
-#from geometry_msgs.msg import PoseStamped
 
 class MotionPlanner():
     
@@ -19,10 +15,10 @@ class MotionPlanner():
         # Global variables
         self.timeReset = False
         self.end = [180, 600, 1]                                    # x, y, z
-        self.start = [780, 740, 1]                                      # x, y, z
-        self.target = [430, 610, 1]                                   # x, y, z
+        self.start = [780, 740, 1]                                  # x, y, z
+        self.target = [430, 610, 1]                                 # x, y, z
         self.currentPose = [0, 0, 0]                                # x, y, z
-        self.mapSize = [1000, 1000]                                   # Size of the world
+        self.mapSize = [1000, 1000]                                 # Size of the world
         self.world = np.zeros((self.mapSize[0],self.mapSize[0]))    # Create an empty world 
         self.startTime = 0.0                                        # Start time of motion
         self.cycleTime = 0.1                                        # Allows the main loop to run once every X seconds
@@ -31,11 +27,9 @@ class MotionPlanner():
         self.clockwise = True
         self.printouts = False
         self.arc = []
-        
-        #rospy.init_node('quad_motion', anonymous=True)
-        #velocity_publisher = rospy.Publisher('/command/twist', Twist, queue_size=10)
-        #telemetry_listener = rospy.Subscriber("????????", String, updateData)
-        #vel_msg = Twist()
+        self.expandDist = 15
+        self.expandFactor = 3
+        self.smoothFactor = 4
     
     
     '''
@@ -46,18 +40,7 @@ class MotionPlanner():
     
     # General setup to occur once
     def setup(self):    
-        #vel_msg.linear.x = 0
-        #vel_msg.linear.y = 0
-        #vel_msg.linear.z = 0
-        #vel_msg.angular.x = 0
-        #vel_msg.angular.y = 0
-        #vel_msg.angular.z = 0
-        
-        #velocity_publisher.publish(vel_msg)
-        #rospy.Timer(rospy.Duration(cycleTime), timerEvent)
-        #angularChange = planarAngle()
-        #self.startTime = rospy.get_time()
-        #self.addSquare([770,325], 50)
+        self.addSquare([760,500], 70)
         self.addCircle([350,350], 60)
         
         
@@ -80,101 +63,98 @@ class MotionPlanner():
         self.arc = self.createPlanarArc()
         disc = self.processArc(self.arc)
         failures = 0
-        #self.elapsedTime = rospy.get_time() - startTime
         
         solutions = []
         print("Number of discontinuities: " + str(len(disc)))
         for item in disc:
-            #print("Start: " + str(a.start))
-            #print("End: " + str(a.end))
             while failures < 5:
                 sol = self.RRT(item, failures)
                 if sol is not None:
                     solutions.append(sol)
-                    #print("Solution Length: " + str(len(sol)))
                     break
                 else:
                     failures += 1
-        
-        #solution = self.aStar()
-        
-        self.plotMotion(solutions)
-        #vel_msg.angular.z = angularChange / motionTime  #Rotation velocity is constant for now
+
+        self.plotMotion(solutions, disc)
     
 
     def processArc(self, arc):
         freeSpace = []
         discontinuities = []
         gap = False
-        start = arc[0]
-        end = arc[(len(arc)-1)]
+        start = [int(arc[0][0]), int(arc[0][1])]
         self.arc = []
-        
-        for a in range(0,len(arc)):       
+        self.arc.append(start)
+
+        for a in range(1,len(arc)):       
             rounded = [int(round(arc[a][0])), int(round(arc[a][1]))]
             if self.world[rounded[0], rounded[1]] != 1:
                 if not gap:
-                    start = rounded
-                    self.arc.append(arc[a])
+                    if self.planarDist(self.arc[-1], arc[a]) >= self.expandFactor  * self.expandDist:
+                        self.arc.append(rounded)
+                        start = rounded
                 else:
-                    end = rounded
-                    self.arc.append(arc[a])
+                    end = [int(round(arc[a+self.expandFactor][0])), int(round(arc[a+self.expandFactor][1]))]
+                    self.arc.append(None)
+                    self.arc.append(end)
                     disc = Disc(start, end)
                     discontinuities.append(disc)
                     gap = False
                 
             else:
+                if self.planarDist(rounded, start) < self.expandFactor * self.expandDist and gap == False:
+                    start = self.arc[-2]
+                    self.arc.pop()
                 gap = True
-
+        if self.arc[-1] != self.end:
+            self.arc.append([int(round(self.end[0])), int(round(self.end[1]))])
         return discontinuities
                 
             
     def RRT(self, gap, attempt):
-        maxLoops = 2000
+    
+        startTime = time.time()
+        maxLoops = 3000
         loopNum = 0
-        self.expandDist = 15
-        self.expandFactor = 3
-        
+                
         bestSolution = None
+        bestSolutionInd = None
         bestSolutionCost = np.inf
         
-        startNode = Node(int(round(gap.start[0])), int(round(gap.start[1])))
-        endNode = Node(int(round(gap.end[0])), int(round(gap.end[1])))
+        startNode = Node(gap.start[0], gap.start[1])
+        endNode = Node(gap.end[0], gap.end[1])
                 
         self.T = [startNode]
-        path = []#self.generatePath() #process path
+        path = []
         plt.clf()
         plt.imshow(self.world.T, cmap=cm.magma)
         plt.gca().invert_yaxis()
-        #plt.plot(gap.start[0], gap.start[1], 'yo')
         
         while loopNum < maxLoops:
             loopNum += 1
             
-            xRand = self.sample(gap, attempt) #returns node with x, y position
-            xNearest, xNearestIndex = self.nearestVertex(xRand) #returns node and index in T
+            xRand = self.sample(gap, attempt)
+            xNearest, xNearestIndex = self.nearestVertex(xRand)
             xNew = self.extend(xNearest, xRand, xNearestIndex)
             if xNew == None:
                 continue
             xNew = self.nearVert(xNew)
             if not self.edgeCollision(xNew.pos, xNew.parent):
-                #plt.plot([xNew.x(), xNew.parentX()], [xNew.y(), xNew.parentY()], "r")
-                #plt.pause(0.001)
-                self.T.append(xNew) #Change this for RRT*
+                self.T.append(xNew)
                 if self.planarDist(xNew.pos, endNode.pos) <= self.expandFactor * self.expandDist:
                     if xNew.cost < bestSolutionCost:
                         bestSolutionCost = xNew.cost
+                        bestSolutionInd = len(self.T) - 1
                         bestSolution = xNew
                     
-                    #print("Path found!")
-                    #path = self.generatePath()
-                    #plt.show()
-                    #return path
-        path = self.generatePath(bestSolution)
+        endNode.parent = bestSolution.pos
+        endNode.parentInd = bestSolutionInd
+        endNode.cost = bestSolution.cost + self.planarDist(endNode.pos, bestSolution.pos)
+        path = self.generatePath(endNode)
+        endTime = time.time()
+        print("RRT Time: " + str(endTime - startTime))
         if path != []:
             print("RRT SOLUTION FOUND")
-            #plt.plot(gap.end[0], gap.end[1], 'yo')
-            #plt.show()
             return path            
         else:
             print("RRT FAILED!")
@@ -184,6 +164,8 @@ class MotionPlanner():
     def nearVert(self, node):
         cost = np.inf
         for index, item in enumerate(self.T):
+            if node.pos == item.pos:
+                continue
             dist = self.planarDist(node.pos, item.pos)
             if  dist <= self.expandFactor * self.expandDist:
                 newCost = dist + item.cost
@@ -197,17 +179,13 @@ class MotionPlanner():
         return node
         
     def generatePath(self, node):
-        # T = list of Nodes
-
-        #ind = len(self.T) - 1
         if node == None:
             return []
         currentNode = node
-        #print(str(currentNode.parent))
         path = []
         a = len(self.T)
         b = 0
-        while currentNode.parentInd is not [None, None] and b <= a:
+        while currentNode.parentInd is not None and b <= a:
             b += 1
             path.append(currentNode.pos)
             currentNode = self.T[currentNode.parentInd]
@@ -228,27 +206,17 @@ class MotionPlanner():
 
         temp = [None, None]
         theta = math.atan2(delta[1], delta[0])
-        #print(" ")
-        #print("Node: " + str(nodePos))
-        #print("Parent: " + str(parentPos))
-        #print("Delta: " + str(delta))
         if abs(delta[0]) > abs(delta[1]):
-            for a in range(dir[0], (delta[0]+dir[0]), dir[0]):# + 1)):
-                #print("a: " + str(a))
+            for a in range(dir[0], (delta[0]+dir[0]), dir[0]):
                 temp[0] = int(nodePos[0] + a)
                 temp[1] = int(nodePos[1] + round(a*math.tan(theta)))
-                #print("Temp: " + str(temp))
                 if self.world[temp[0], temp[1]] == 1:
-                    #print("Collision")
                     return True
         else:
             for a in range(dir[0], (delta[1]+dir[0]), dir[1]):#  + 1)):
-                #print("a: " + str(a))
                 temp[0] = int(nodePos[0] + round(a/math.tan(theta)))
                 temp[1] = int(nodePos[1] + a)
-                #print("Temp: " + str(temp))
                 if self.world[temp[0], temp[1]] == 1:
-                    #print("Collision")
                     return True
         return False
         
@@ -262,15 +230,6 @@ class MotionPlanner():
         newNode.parent = nearest.pos
         newNode.parentInd = index
         
-        #if newNode.x() < 0:
-        #    newNode.pos[0] = 0
-        #if newNode.y() < 0:
-        #    newNode.pos[1] = 0
-        #if newNode.x() >= self.mapSize[0]:
-        #    newNode.pos[0] = self.mapSize[0] - 1
-        #if newNode.y() >= self.mapSize[1]:
-        #    newNode.pos[1] = self.mapSize[1] - 1
-        
         if newNode.x() < 0 or newNode.y() < 0:
             return None
         if newNode.x() >= self.mapSize[0] or  newNode.y() >= self.mapSize[1]:
@@ -282,16 +241,12 @@ class MotionPlanner():
                     
     def nearestVertex(self, x):
         cost = np.inf
-        #ind = 0
         for index, item in enumerate(self.T):
             newCost = self.planarDist(x.pos, item.pos)
             if newCost < cost:
                 cost = newCost
                 nearest = item
                 ind = index
-        #print("Len T: " + str(len(self.T)))
-        #print("Parent Ind: " + str(ind))
-        #print("Cost: " + str(cost))
         return nearest, ind
         
                     
@@ -308,35 +263,23 @@ class MotionPlanner():
         delta[1] = abs(gap.start[1] - gap.end[1])
         
         if delta[0] > delta[1]:
-            area = delta[0] + (attempt * delta[0] * 0.25)
+            area = int(round((0.65 * delta[0]) + (attempt * delta[0] * 0.25)))
         else:
-            area = delta[1] + (attempt * delta[1] * 0.25)
-            
-        #print("Center: " + str(center))
-        #print("Delta: " + str(delta))
-        #print("Area: " + str(area))
-        
-        #x = rand.randint((-self.mapSize[0]), self.mapSize[0])
-        #y = rand.randint((-self.mapSize[1]), self.mapSize[1])
+            area = int(round((0.65 * delta[1]) + (attempt * delta[1] * 0.25)))
+
         x = rand.randint((-area), area)
         y = rand.randint((-area), area)
         x = int(round(x + center[0]))
         y = int(round(y + center[1]))
-        #if x < 0:
-        #    x = 0
-        #if y < 0:
-        #    y = 0
-        #if x >= self.mapSize[0]:
-        #    x = self.mapSize[0] - 1
-        #if y >= self.mapSize[1]:
-        #    y = self.mapSize[1] - 1
+
         newSamp = Node(x, y)
         return newSamp
 
     
     # Creates a 2-D top-down view of the motion path
     # https://matplotlib.org/gallery/color/colormap_reference.html
-    def plotMotion(self, solutions):
+    def plotMotion(self, solutions, disc):
+        finalPath = []
         plt.clf()
         plt.imshow(self.world.T, cmap=cm.magma)
         plt.gca().invert_yaxis()
@@ -344,21 +287,43 @@ class MotionPlanner():
         plt.plot(self.target[0], self.target[1], 'go')
         plt.xlabel("x-axis")
         plt.ylabel("y-axis")
+        discNum = 0
+
         for a in self.arc:
-            plt.plot(a[0], a[1], 'r.')
-            #plt.pause(0.01 * self.cycleTime)
-        for c in solutions:
-            for b in c:
-                plt.plot(b[0], b[1], 'm.')
-            
+            if a != None:
+                finalPath.append([a[0], a[1]])
+                plt.plot(a[0], a[1], 'r.')
+            else:
+                #print("Here")
+                for b in solutions[discNum][::-1]:
+                    finalPath.append([b[0], b[1]])
+                    plt.plot(b[0], b[1], 'm.')
+                    
+                discNum += 1
+            plt.pause(0.11 * self.cycleTime)
+
+        
+        print("Final Path Nodes: " + str(len(finalPath))) 
         plt.plot(self.end[0], self.end[1], 'yo')
         plt.show()
-        #plt.plot()
+        
+        plt.clf()
+        plt.imshow(self.world.T, cmap=cm.magma)
+        plt.gca().invert_yaxis()
+        plt.plot(self.start[0], self.start[1], 'yo')
+        plt.plot(self.target[0], self.target[1], 'go')
+        plt.xlabel("x-axis")
+        plt.ylabel("y-axis")
+        
+        for a in range (0, (len(finalPath)-1)):
+            plt.plot([finalPath[a][0], finalPath[a+1][0]], [finalPath[a][1], finalPath[a+1][1]], "r")
+        plt.plot(self.end[0], self.end[1], 'yo')
+        plt.show()
         #plt.imshow()
     
     
     def createPlanarArc(self):
-        path = [] #[self.start[0], self.start[1], 0.0]
+        path = []
         radStart = self.planarDist(self.start, self.target)     #Radius about the target at the start of the arc
         radEnd = self.planarDist(self.end, self.target)         #Radius about the target at the end of the arc
         radDelt = radEnd - radStart                             #Difference between radii
@@ -530,7 +495,7 @@ class Node():
         self.f = 0.0
         self.cost = 0.0
         self.parent = [None, None]
-        self.parentInd = 0
+        self.parentInd = None
         
     def x(self):
         return self.pos[0]
