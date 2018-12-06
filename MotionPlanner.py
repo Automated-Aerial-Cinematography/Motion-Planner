@@ -8,18 +8,21 @@ import numpy as np
 import random as rand
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
+from get_model import *
+
+occupancy_scale = 0.01
+
 
 class MotionPlanner():
     
-    def __init__(self):
+    def __init__(self, isStandAlone=False, rate=0):
         # Global variables
         self.timeReset = False
         self.end = [180, 600, 1]                                    # x, y, z
         self.start = [780, 740, 1]                                  # x, y, z
         self.target = [430, 610, 1]                                 # x, y, z
         self.currentPose = [0, 0, 0]                                # x, y, z
-        self.mapSize = [1000, 1000]                                 # Size of the world
-        self.world = np.zeros((self.mapSize[0],self.mapSize[0]))    # Create an empty world 
+
         self.startTime = 0.0                                        # Start time of motion
         self.cycleTime = 0.1                                        # Allows the main loop to run once every X seconds
         self.motionTime = 10.0                                      # Total time to complete motion in seconds
@@ -30,8 +33,35 @@ class MotionPlanner():
         self.expandDist = 15
         self.expandFactor = 3
         self.smoothFactor = 4
+
+        self.finalPath = []
+        self.isStandAlone = isStandAlone
+        self.rate = rate
+        self.worldData = None
+        self.mapSize = [2000, 2000]                                 # Size of the world
+        self.worldData = None       
+        if(not isStandAlone):
+            self.minMapSize = [-2000, -2000] # Minimum Map Size
+            self.world = None
+        else:
+            self.minMapSize = [0, 0] # Minimum Map Size
+            self.world = np.zeros((self.mapSize[0],self.mapSize[0]))    # Create an empty world 
+            
+    def set_start(self, start):
+        self.start = start
+    def set_end(self, end):
+        self.end = end
+    def set_target(self, target):
+        self.target = target
+    def set_currentPose(self, currentPose):
+        self.currentPose = currentPose
     
-    
+    def reset(self):
+        self.arc = []
+        self.finalPath = []
+    def setWorldGetter(self, objPositionCollector):
+        self.worldData = objPositionCollector   
+
     '''
     ####################################################################    
     ######################## Primary Functions #########################
@@ -40,8 +70,10 @@ class MotionPlanner():
     
     # General setup to occur once
     def setup(self):    
-        self.addSquare([760,500], 70)
-        self.addCircle([350,350], 60)
+        print("Setup")
+        if(self.isStandAlone):
+            self.addSquare([760,500], 70)
+            self.addCircle([350,350], 60)
         
         
     def addSquare(self, pos, size):
@@ -59,7 +91,7 @@ class MotionPlanner():
         
         
     # Performs the motion control calculations    
-    def motionControl(self):
+    def motionControl(self, printData=True):
         self.arc = self.createPlanarArc()
         disc = self.processArc(self.arc)
         failures = 0
@@ -68,16 +100,31 @@ class MotionPlanner():
         print("Number of discontinuities: " + str(len(disc)))
         for item in disc:
             while failures < 5:
-                sol = self.RRT(item, failures)
+                sol = self.RRT(item, failures, 3000)
                 if sol is not None:
                     solutions.append(sol)
                     break
                 else:
                     failures += 1
-
-        self.plotMotion(solutions, disc)
-    
-
+        if failures < 5:
+            self.finalPath = self.generateFinalPath(solutions)
+            temp = self.isStandAlone
+            if(printData):
+                self.isStandAlone = True
+            self.plotMotion(solutions, disc)
+            self.isStandAlone = temp
+        else:
+            self.finalPath = []
+    def get_occupancy_data(self, x, y, z=1):
+        if(self.isStandAlone):
+            return self.world[x, y]
+        else:
+            #t1 = time.time()
+            occ = self.worldData.get_occupancy_2d(float(x)*occupancy_scale,float(y)*occupancy_scale,1)
+            #t2 = time.time()
+            #print("Occ Check time "+ str(t2-t1))
+            #print(occ, x,y, float(x)*occupancy_scale,float(y)*occupancy_scale)
+            return occ
     def processArc(self, arc):
         freeSpace = []
         discontinuities = []
@@ -88,7 +135,8 @@ class MotionPlanner():
 
         for a in range(1,len(arc)):       
             rounded = [int(round(arc[a][0])), int(round(arc[a][1]))]
-            if self.world[rounded[0], rounded[1]] != 1:
+            #print(rounded)
+            if self.get_occupancy_data(rounded[0], rounded[1]) != 1:
                 if not gap:
                     if self.planarDist(self.arc[-1], arc[a]) >= self.expandFactor  * self.expandDist:
                         self.arc.append(rounded)
@@ -103,7 +151,10 @@ class MotionPlanner():
                 
             else:
                 if self.planarDist(rounded, start) < self.expandFactor * self.expandDist and gap == False:
+                    #print('Arc',self.arc, a)
+
                     start = self.arc[-2]
+
                     self.arc.pop()
                 gap = True
         if self.arc[-1] != self.end:
@@ -111,10 +162,10 @@ class MotionPlanner():
         return discontinuities
                 
             
-    def RRT(self, gap, attempt):
+    def RRT(self, gap, attempt, maxLoops=3000):
     
         startTime = time.time()
-        maxLoops = 3000
+        #maxLoops = 3000
         loopNum = 0
                 
         bestSolution = None
@@ -126,9 +177,11 @@ class MotionPlanner():
                 
         self.T = [startNode]
         path = []
-        plt.clf()
-        plt.imshow(self.world.T, cmap=cm.magma)
-        plt.gca().invert_yaxis()
+        if(self.isStandAlone):
+            plt.clf()
+            if(self.world != None):
+                plt.imshow(self.world.T, cmap=cm.magma)
+            plt.gca().invert_yaxis()
         
         while loopNum < maxLoops:
             loopNum += 1
@@ -146,11 +199,13 @@ class MotionPlanner():
                         bestSolutionCost = xNew.cost
                         bestSolutionInd = len(self.T) - 1
                         bestSolution = xNew
-                    
-        endNode.parent = bestSolution.pos
-        endNode.parentInd = bestSolutionInd
-        endNode.cost = bestSolution.cost + self.planarDist(endNode.pos, bestSolution.pos)
-        path = self.generatePath(endNode)
+        if(bestSolution is None):
+            print("Best Solution is None!")
+        else:                        
+            endNode.parent = bestSolution.pos
+            endNode.parentInd = bestSolutionInd
+            endNode.cost = bestSolution.cost + self.planarDist(endNode.pos, bestSolution.pos)
+            path = self.generatePath(endNode)
         endTime = time.time()
         print("RRT Time: " + str(endTime - startTime))
         if path != []:
@@ -210,13 +265,13 @@ class MotionPlanner():
             for a in range(dir[0], (delta[0]+dir[0]), dir[0]):
                 temp[0] = int(nodePos[0] + a)
                 temp[1] = int(nodePos[1] + round(a*math.tan(theta)))
-                if self.world[temp[0], temp[1]] == 1:
+                if self.get_occupancy_data(temp[0], temp[1]) == 1:
                     return True
         else:
             for a in range(dir[0], (delta[1]+dir[0]), dir[1]):#  + 1)):
                 temp[0] = int(nodePos[0] + round(a/math.tan(theta)))
                 temp[1] = int(nodePos[1] + a)
-                if self.world[temp[0], temp[1]] == 1:
+                if self.get_occupancy_data(temp[0], temp[1]) == 1:
                     return True
         return False
         
@@ -230,7 +285,7 @@ class MotionPlanner():
         newNode.parent = nearest.pos
         newNode.parentInd = index
         
-        if newNode.x() < 0 or newNode.y() < 0:
+        if newNode.x() < self.minMapSize[0] or newNode.y() < self.minMapSize[1]:
             return None
         if newNode.x() >= self.mapSize[0] or  newNode.y() >= self.mapSize[1]:
             return None
@@ -273,6 +328,7 @@ class MotionPlanner():
         y = int(round(y + center[1]))
 
         newSamp = Node(x, y)
+        #print(x,y)
         return newSamp
 
     
@@ -280,47 +336,66 @@ class MotionPlanner():
     # https://matplotlib.org/gallery/color/colormap_reference.html
     def plotMotion(self, solutions, disc):
         finalPath = []
-        plt.clf()
-        plt.imshow(self.world.T, cmap=cm.magma)
-        plt.gca().invert_yaxis()
-        plt.plot(self.start[0], self.start[1], 'yo')
-        plt.plot(self.target[0], self.target[1], 'go')
-        plt.xlabel("x-axis")
-        plt.ylabel("y-axis")
+        if(self.isStandAlone):
+            plt.clf()
+            if(self.world != None):
+                plt.imshow(self.world.T, cmap=cm.magma)
+            plt.gca().invert_yaxis()
+            plt.plot(self.start[0], self.start[1], 'yo')
+            plt.plot(self.target[0], self.target[1], 'go')
+            plt.xlabel("x-axis")
+            plt.ylabel("y-axis")
         discNum = 0
 
         for a in self.arc:
             if a != None:
                 finalPath.append([a[0], a[1]])
-                plt.plot(a[0], a[1], 'r.')
+                if(self.isStandAlone):
+                    plt.plot(a[0], a[1], 'r.')
             else:
                 #print("Here")
                 for b in solutions[discNum][::-1]:
                     finalPath.append([b[0], b[1]])
-                    plt.plot(b[0], b[1], 'm.')
+                    if(self.isStandAlone):
+                        plt.plot(b[0], b[1], 'm.')
                     
                 discNum += 1
-            plt.pause(0.11 * self.cycleTime)
+            if(self.isStandAlone):
+                plt.pause(0.11 * self.cycleTime)
 
         
         print("Final Path Nodes: " + str(len(finalPath))) 
-        plt.plot(self.end[0], self.end[1], 'yo')
-        plt.show()
+        if(self.isStandAlone):
+            plt.plot(self.end[0], self.end[1], 'yo')
+            plt.show()
         
-        plt.clf()
-        plt.imshow(self.world.T, cmap=cm.magma)
-        plt.gca().invert_yaxis()
-        plt.plot(self.start[0], self.start[1], 'yo')
-        plt.plot(self.target[0], self.target[1], 'go')
-        plt.xlabel("x-axis")
-        plt.ylabel("y-axis")
-        
-        for a in range (0, (len(finalPath)-1)):
-            plt.plot([finalPath[a][0], finalPath[a+1][0]], [finalPath[a][1], finalPath[a+1][1]], "r")
-        plt.plot(self.end[0], self.end[1], 'yo')
-        plt.show()
+            plt.clf()
+            if(self.world != None):
+                plt.imshow(self.world.T, cmap=cm.magma)
+            plt.gca().invert_yaxis()
+            plt.plot(self.start[0], self.start[1], 'yo')
+            plt.plot(self.target[0], self.target[1], 'go')
+            plt.xlabel("x-axis")
+            plt.ylabel("y-axis")
+        if(self.isStandAlone):
+            for a in range (0, (len(finalPath)-1)):
+                plt.plot([finalPath[a][0], finalPath[a+1][0]], [finalPath[a][1], finalPath[a+1][1]], "r")
+            plt.plot(self.end[0], self.end[1], 'yo')
+            plt.show()
+
         #plt.imshow()
-    
+    def generateFinalPath(self, solutions):
+        finalPath = []
+        discNum = 0
+        for a in self.arc:
+            if a != None:
+                finalPath.append([a[0], a[1]])
+            else:
+                #print("Here")
+                for b in solutions[discNum][::-1]:
+                    finalPath.append([b[0], b[1]])  
+                discNum+=1
+        return finalPath
     
     def createPlanarArc(self):
         path = []
@@ -373,25 +448,7 @@ class MotionPlanner():
         return path
         
         
-    # Sends quadcopter velocity commands via a ROS publisher
-    def sendCommands(self):
-        pass
-        #velocity_publisher.publish(vel_msg)
-    
-    
-    # ROS Subscriber for quadcopter position and orientation
-    # Updates global variables related to quadcopter pose
-    def updateData(self):
-        #currentPose
-        pass
-    
-    
-    # Forces a tick rate for the motion planner
-    # Main loop cycle time is controlled by changing timeReset
-    def timerEvent(self, event):
-        self.timeReset = True    
-        
-        
+
     '''
     ####################################################################    
     ######################### Helper Functions #########################
@@ -530,7 +587,14 @@ class Disc():
 '''
     
 if __name__ == '__main__':
-    mp = MotionPlanner()
-    mp.setup()
-    mp.motionControl()
+    if(len(sys.argv) > 1):
+        if(sys.argv[1]=="ROS"):
+            mp = MotionPlanner(False, 20)# Starting out slow so that we can ease into this
+            mp.run()
+        else:
+            print("Err: Unknown Params", sys.argv)
+    else:
+        mp = MotionPlanner(True)
+        mp.setup()
+        mp.motionControl()
     

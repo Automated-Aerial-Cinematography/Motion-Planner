@@ -6,6 +6,7 @@ import matplotlib as mp
 import matplotlib.pyplot as plt
 from math import *
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from gazebo_ros.gazebo_interface import spawn_sdf_model_client
 #import numpy as np
 
 # Pulled from the test_simple_world.world
@@ -15,7 +16,9 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 known_object_scales = {'unit_box_0':(1, 1, 1),
                        'unit_box_1':(2.60838, 2.61964, 2.57757)}
 
-ignore_objects = ("ground_plane", "quadrotor")
+ignore_objects = ("ground_plane")
+quadcopter_name = "quadrotor"
+target_name = "person_standing"
 class gazebo_object:
     def __init__(self, name):
         self.name = name
@@ -31,24 +34,32 @@ class gazebo_object:
         (x,y,z) = euler_from_quaternion([_x,_y,_z,_w])
         self.twist = (x,y,z)
 
-    def get_pos(self):
-        return self.pos
+    def get_pos(self, scale=1):
+        pos = [0,0,0]
+        pos[0] = self.pos[0]/scale
+        pos[1] = self.pos[1]/scale
+        pos[2] = self.pos[2]/scale
+        return pos
     def get_size(self):
         return self.size
     def get_twist(self):
-        return self.twist
+        twist = [self.twist[0],self.twist[1], self.twist[2]]
+        return twist
 class ObjectPositionCollector(object):
   
-    def __init__(self, rate=1):
-        print("Creating object")
-        rospy.init_node('WorldDataCollector')
+    def __init__(self, rate=0):
+        print("Creating object Position Collector")
+        if(rate != 0):
+            rospy.init_node('WorldDataCollector')
 
-
+        self.quadcopter = gazebo_object(quadcopter_name)
+        self.target = gazebo_object(target_name)
         self.get_world_properties = None
         self.get_model_properties = None
         self.get_model_state = None
         self.objects = {}
-        update_timer = rospy.Timer(rospy.Duration(rate), self.update_world_data)
+        if(rate != 0):
+            update_timer = rospy.Timer(rospy.Duration(rate), self.update_world_data)
 
 
     def get_proxy_handles(self):
@@ -77,7 +88,7 @@ class ObjectPositionCollector(object):
             except rospy.ROSException:
                 print('/gazebo/get_model_properties service is unavailable')
 
-    def update_world_data(self, event):
+    def update_world_data(self, event=None):
         # TODO this will need a mutex if we use the rospy timer internally.
        #print("Updating World Data")
         # Get the handles to the Service Proxy
@@ -85,7 +96,7 @@ class ObjectPositionCollector(object):
         # Get the Position Data
         try:
             msg_world = self.get_world_properties()
-            print(msg_world)
+            #print(msg_world)
             if(msg_world.success):
                 for model in msg_world.model_names:
                     if(model not in ignore_objects):
@@ -102,15 +113,22 @@ class ObjectPositionCollector(object):
                                # print "\tX", model_state.pose.position.x
                                # print "\tY", model_state.pose.position.y
                                # print "\tZ", model_state.pose.position.z
-                                if(model not in self.objects):
-                                    o = gazebo_object(model)
-                                    if(model in known_object_scales):
-                                        s = known_object_scales[model]
-                                        o.set_size(s[0], s[1], s[2])
-                                    self.objects[model] = o
-                                self.objects[model].set_pos(model_state.pose.position.x, model_state.pose.position.y, model_state.pose.position.z)
-                                self.objects[model].set_twist(model_state.pose.orientation.x, model_state.pose.orientation.y, model_state.pose.orientation.z, model_state.pose.orientation.w)
-            self.draw_objects()
+                                if(model == quadcopter_name):
+                                    self.quadcopter.set_pos(model_state.pose.position.x, model_state.pose.position.y, model_state.pose.position.z)
+                                    self.quadcopter.set_twist(model_state.pose.orientation.x, model_state.pose.orientation.y, model_state.pose.orientation.z, model_state.pose.orientation.w)
+                                elif(model == target_name):
+                                    self.target.set_pos(model_state.pose.position.x, model_state.pose.position.y, model_state.pose.position.z)
+                                    self.target.set_twist(model_state.pose.orientation.x, model_state.pose.orientation.y, model_state.pose.orientation.z, model_state.pose.orientation.w)
+                                else:
+                                    if(model not in self.objects):
+                                        o = gazebo_object(model)
+                                        if(model in known_object_scales):
+                                            s = known_object_scales[model]
+                                            o.set_size(s[0], s[1], s[2])
+                                        self.objects[model] = o
+                                    self.objects[model].set_pos(model_state.pose.position.x, model_state.pose.position.y, model_state.pose.position.z)
+                                    self.objects[model].set_twist(model_state.pose.orientation.x, model_state.pose.orientation.y, model_state.pose.orientation.z, model_state.pose.orientation.w)
+            #self.draw_objects()
         except rospy.ServiceException, e:
             print("Service Failed", e)
 
@@ -134,7 +152,7 @@ class ObjectPositionCollector(object):
         #    for y in range(-5, 5):
          #       print("Checking x,y", x, y, self.get_occupancy_2d(x, y, 0.5))
                 
-        plt.pause(100)
+        #plt.pause(1)
     def get_occupancy_2d(self, _x, _y, radius):
         for o in self.objects:
             obj = self.objects[o]
@@ -163,10 +181,14 @@ class ObjectPositionCollector(object):
             if(check):
                 return True
         return False
+    def get_quadcopter(self):
+        return self.quadcopter
+    def get_target(self):
+        return self.target
 if __name__ == '__main__':
     try:
         print("Startin Program")
-        m = ObjectPositionCollector()
+        m = ObjectPositionCollector(1)
         rospy.spin()
 
     except rospy.ROSInterruptException:
