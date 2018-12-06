@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 from MotionPlanner import *
 from get_model import *
 
-rate = 1.0
+rate = 20
+occupancy_scale = 0.01
+
 mp = MotionPlanner()
 ob = ObjectPositionCollector()
 
@@ -15,7 +17,13 @@ def init():
     
     
 # Sends quadcopter velocity commands via a ROS publisher
-def sendCommands():
+def sendCommands(flightPath):
+    # Use flightPath[0] as your next point
+    if(len(flightPath) > 1):
+        x = flightPath[1][0]*occupancy_scale
+        y = flightPath[1][1]*occupancy_scale
+        #x = flightPath[1][0]*occupancy_scale
+        print(flightPath[1],x,y)
     pass
     #velocity_publisher.publish(vel_msg)
 
@@ -65,7 +73,7 @@ def run(rate):
     t2 = time.time()
     print("Motion Time = "+ str(t2-t1))
     t1 = time.time()
-    sendCommands()
+    sendCommands(mp.finalPath)
     t2 = time.time()
     print("Controls Time = "+ str(t2-t1))
     end = time.time()
@@ -73,7 +81,6 @@ def run(rate):
 
 if __name__ == '__main__':
     try:
-        rate = 20
         print("Starting Program")
         rospy.init_node('Motion_Planner')
         # init the program
