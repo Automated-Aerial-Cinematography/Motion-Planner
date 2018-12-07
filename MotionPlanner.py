@@ -49,16 +49,20 @@ class MotionPlanner():
             
     def set_start(self, start):
         self.start = start
+        
     def set_end(self, end):
         self.end = end
+        
     def set_target(self, target):
         self.target = target
+        
     def set_currentPose(self, currentPose):
         self.currentPose = currentPose
     
     def reset(self):
         self.arc = []
         self.finalPath = []
+        
     def setWorldGetter(self, objPositionCollector):
         self.worldData = objPositionCollector   
 
@@ -68,29 +72,23 @@ class MotionPlanner():
     ####################################################################
     '''
     
-    # General setup to occur once
+    # Runs any necessary setup.
+    # Inputs:
+    #   None
+    # Return:
+    #   None
     def setup(self):    
         print("Setup")
         if(self.isStandAlone):
             self.addSquare([760,500], 70)
             self.addCircle([350,350], 60)
         
-        
-    def addSquare(self, pos, size):
-        halfSize = int(size/2)
-        for x in range((-halfSize), halfSize):
-            for y in range((-halfSize), halfSize):
-                self.world[(pos[0]+x),(pos[1]+y)] = 1
-                
-    def addCircle(self, pos, rad):
-        for x in range((-rad), rad):
-            for y in range((-rad), rad):
-                point  = [(pos[0] + x), (pos[1] + y)]
-                if self.planarDist(pos, point) <= rad:
-                    self.world[(pos[0]+x),(pos[1]+y)] = 1
-        
-        
-    # Performs the motion control calculations    
+       
+    # Acts as a top level method for calling motion control. 
+    # Inputs:
+    #   printData:
+    # Return:
+    #   None
     def motionControl(self, printData=True):
         self.arc = self.createPlanarArc()
         disc = self.processArc(self.arc)
@@ -100,7 +98,7 @@ class MotionPlanner():
         print("Number of discontinuities: " + str(len(disc)))
         for item in disc:
             while failures < 5:
-                sol = self.RRT(item, failures, 3000)
+                sol = self.RRTstar(item, failures, 3000)
                 if sol is not None:
                     solutions.append(sol)
                     break
@@ -115,55 +113,17 @@ class MotionPlanner():
             self.isStandAlone = temp
         else:
             self.finalPath = []
-    def get_occupancy_data(self, x, y, z=1):
-        if(self.isStandAlone):
-            return self.world[x, y]
-        else:
-            #t1 = time.time()
-            occ = self.worldData.get_occupancy_2d(float(x)*occupancy_scale,float(y)*occupancy_scale,1)
-            #t2 = time.time()
-            #print("Occ Check time "+ str(t2-t1))
-            #print(occ, x,y, float(x)*occupancy_scale,float(y)*occupancy_scale)
-            return occ
-    def processArc(self, arc):
-        freeSpace = []
-        discontinuities = []
-        gap = False
-        start = [int(arc[0][0]), int(arc[0][1])]
-        self.arc = []
-        self.arc.append(start)
-
-        for a in range(1,len(arc)):       
-            rounded = [int(round(arc[a][0])), int(round(arc[a][1]))]
-            #print(rounded)
-            if self.get_occupancy_data(rounded[0], rounded[1]) != 1:
-                if not gap:
-                    if self.planarDist(self.arc[-1], arc[a]) >= self.expandFactor  * self.expandDist:
-                        self.arc.append(rounded)
-                        start = rounded
-                else:
-                    end = [int(round(arc[a+self.expandFactor][0])), int(round(arc[a+self.expandFactor][1]))]
-                    self.arc.append(None)
-                    self.arc.append(end)
-                    disc = Disc(start, end)
-                    discontinuities.append(disc)
-                    gap = False
-                
-            else:
-                if self.planarDist(rounded, start) < self.expandFactor * self.expandDist and gap == False:
-                    #print('Arc',self.arc, a)
-
-                    start = self.arc[-2]
-
-                    self.arc.pop()
-                gap = True
-        if self.arc[-1] != self.end:
-            self.arc.append([int(round(self.end[0])), int(round(self.end[1]))])
-        return discontinuities
-                
             
-    def RRT(self, gap, attempt, maxLoops=3000):
-    
+
+    # Performs the RRT* motion control calculations.
+    # Inputs:
+    #   gap: A discontinuity over which to perform the RRT* motion planning.
+    #   attempt: The current attempt number. Used to expand the seach area after failed attempts.
+    #   maxLoops: Maximum number of loops before the current RRT* search terminates.
+    # Return:
+    #   path: The final path as a sequance of node locations.
+    #   None: Returns 'None' if the RRT* search fails to find a valid path.
+    def RRTstar(self, gap, attempt, maxLoops=3000):    
         startTime = time.time()
         #maxLoops = 3000
         loopNum = 0
@@ -207,15 +167,62 @@ class MotionPlanner():
             endNode.cost = bestSolution.cost + self.planarDist(endNode.pos, bestSolution.pos)
             path = self.generatePath(endNode)
         endTime = time.time()
-        print("RRT Time: " + str(endTime - startTime))
+        print("RRT* Time: " + str(endTime - startTime))
         if path != []:
-            print("RRT SOLUTION FOUND")
+            print("RRT* SOLUTION FOUND")
             return path            
         else:
-            print("RRT FAILED!")
+            print("RRT* FAILED!")
             return None
-        
-        
+  
+
+    # Processes the pre-calculated arc. Will simplify it into a series of points at a set distance and notes any discontinuities
+    # Inputs:
+    #   arc: Pre-computed ideal path arc
+    # Return:
+    #   discontinuities: a list of discontinuities caused by obstacle impeding the arc.
+    def processArc(self, arc):
+        freeSpace = []
+        discontinuities = []
+        gap = False
+        start = [int(arc[0][0]), int(arc[0][1])]
+        self.arc = []
+        self.arc.append(start)
+
+        for a in range(1,len(arc)):       
+            rounded = [int(round(arc[a][0])), int(round(arc[a][1]))]
+            #print(rounded)
+            if self.get_occupancy_data(rounded[0], rounded[1]) != 1:
+                if not gap:
+                    if self.planarDist(self.arc[-1], arc[a]) >= self.expandFactor  * self.expandDist:
+                        self.arc.append(rounded)
+                        start = rounded
+                else:
+                    end = [int(round(arc[a+self.expandFactor][0])), int(round(arc[a+self.expandFactor][1]))]
+                    self.arc.append(None)
+                    self.arc.append(end)
+                    disc = Disc(start, end)
+                    discontinuities.append(disc)
+                    gap = False
+                
+            else:
+                if self.planarDist(rounded, start) < self.expandFactor * self.expandDist and gap == False:
+                    #print('Arc',self.arc, a)
+
+                    start = self.arc[-2]
+
+                    self.arc.pop()
+                gap = True
+        if self.arc[-1] != self.end:
+            self.arc.append([int(round(self.end[0])), int(round(self.end[1]))])
+        return discontinuities
+    
+    
+    # Sets a node's parent to be the closest esisting node in terms of linear distance. 
+    # Inputs:
+    #   node: New node to be connected to nearest existing node.
+    # Return:
+    #   node: Modified node.  
     def nearVert(self, node):
         cost = np.inf
         for index, item in enumerate(self.T):
@@ -233,6 +240,11 @@ class MotionPlanner():
             node.parentInd = ind
         return node
         
+    # Follows the RRT* tree backwards from a node to the start node.
+    # Inputs:
+    #   node: The node from which to trace backwards.
+    # Return:
+    #   path: A list of points representing the nodes which connect the start node to the desired node.
     def generatePath(self, node):
         if node == None:
             return []
@@ -246,7 +258,14 @@ class MotionPlanner():
             currentNode = self.T[currentNode.parentInd]
         return path
 
-    # Checks for collision in linear line between node and parent                
+
+    # Checks for collision in linear line between a node and its parent or any two points.
+    # Inputs:
+    #   nodePos: The x-y position of the node.
+    #   parentPos: The x-y position of the parent.
+    # Return:
+    #   True if there is a obstacle blocking the straight line path between the two points
+    #   False if there is NOT a obstacle blocking the straight line path between the two points 
     def edgeCollision(self, nodePos, parentPos):
         if nodePos == parentPos:
             return True
@@ -275,7 +294,14 @@ class MotionPlanner():
                     return True
         return False
         
-        
+    # Creates a new node by extending from an existing node in the direction of a given point.
+    # Inputs:
+    #   nearest: The closest existing node to the random, given point.
+    #   rand: The random x-y position towards which to extend the tree.
+    #   index: The index of the closest existing node in the tree list.
+    # Outputs:
+    #   newNode: Returns the new node if it exists within the bounds of the world.
+    #   'None: Returns 'None' if the new node exists outside the world bounds.
     def extend(self, nearest, rand, index):
         theta = math.atan2((rand.y() - nearest.y()), (rand.x() - nearest.x()))
         newNode = copy.deepcopy(nearest)
@@ -293,7 +319,12 @@ class MotionPlanner():
         newNode.cost += self.planarDist(newNode.pos, newNode.parent)
         return newNode
         
-                    
+    # Returns the closest existing node to a point.
+    # Input:
+    #   x: The point from which to find the closest existing node.
+    # Return:
+    #   nearest: The closest node to the point x
+    #   ind: The index of the closets node in the RRT* tree list.
     def nearestVertex(self, x):
         cost = np.inf
         for index, item in enumerate(self.T):
@@ -333,7 +364,6 @@ class MotionPlanner():
 
     
     # Creates a 2-D top-down view of the motion path
-    # https://matplotlib.org/gallery/color/colormap_reference.html
     def plotMotion(self, solutions, disc):
         finalPath = []
         if(self.isStandAlone):
@@ -383,7 +413,7 @@ class MotionPlanner():
             plt.plot(self.end[0], self.end[1], 'yo')
             plt.show()
 
-        #plt.imshow()
+
     def generateFinalPath(self, solutions):
         finalPath = []
         discNum = 0
@@ -396,7 +426,8 @@ class MotionPlanner():
                     finalPath.append([b[0], b[1]])  
                 discNum+=1
         return finalPath
-    
+
+
     def createPlanarArc(self):
         path = []
         radStart = self.planarDist(self.start, self.target)     #Radius about the target at the start of the arc
@@ -454,21 +485,56 @@ class MotionPlanner():
     ######################### Helper Functions #########################
     ####################################################################
     '''
-        
+    
+    # Adds a square shape to the internal world map used while debugging
+    # Inputs:
+    #   pos: Postition of the center of the square
+    #   size: Width and height of the square
+    # Return:
+    #   None   
+    def addSquare(self, pos, size):
+        halfSize = int(size/2)
+        for x in range((-halfSize), halfSize):
+            for y in range((-halfSize), halfSize):
+                self.world[(pos[0]+x),(pos[1]+y)] = 1
+    
+    
+    # Adds a circle shape to the internal world map used while debugging
+    # Inputs:
+    #   pos: Postition of the center of the circle
+    #   size: Radius of the circle
+    # Return:
+    #   None               
+    def addCircle(self, pos, rad):
+        for x in range((-rad), rad):
+            for y in range((-rad), rad):
+                point  = [(pos[0] + x), (pos[1] + y)]
+                if self.planarDist(pos, point) <= rad:
+                    self.world[(pos[0]+x),(pos[1]+y)] = 1
+
+
     # Calculates the angle between two points about a  third target point projected into the x-y plane
     # Inputs:
     #   a: [x, y(, z)] position for first point
     #   b: [x, y(, z)] position of second point
     #   c: [x, y(, z)] position of target or center of rotation
     # Return:
-    #   Angle between a and b in x-y plane
+    #   Angle between a and b about c in x-y plane
     def planarAngle(self, a, b, c):
-        aToC = self.planarDist(a, c)    # First to Target distance
-        bToC = self.planarDist(b, c)    # Second to Target distance
-        aToB = self.planarDist(a, b)    # First to Second distance
-        
-        # Law of cosines: cos(A) = (b^2 + c^2 - a^2)/(2*b*c)
-        return arccos(((aToC*aToC) + (bToC*bToC) - (aToB*aToB))/ (2*aToC*bToC)) #NEED TO ACCOUNT FOR ROLLOVER!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        deltaA = [(a[0] - c[0]), (a[1] - c[1])]
+        angleA = math.atan2(deltaA[1], deltaA[0])
+        if angleA < 0.0:
+            angleA += (2 * math.pi) 
+        deltaB = [(b[0] - c[0]), (b[1] - c[1])]
+        angleB = math.atan2(deltaB[1], deltaB[0])
+        if angleB < 0.0:
+            angleB += (2 * math.pi)
+        angle = angleB - angleA
+        if angle < 0.0:
+            angle += (2 * math.pi)
+        if angle >= 2 * math.pi:
+            angle -= (2 * math.pi)
+        return angle
     
     
     # Calculates the angle between two points relative to the X-axis projected into the x-y plane
@@ -509,32 +575,27 @@ class MotionPlanner():
         ySq = (b[1] - a[1])**2
         zSq = (b[2] - a[2])**2
         return math.sqrt((xSq + ySq + zSq))
-    
-    
-    # Linearly interpolates between the start and end positions
-    # Inputs:
-    #   a: [x, y, z] start position
-    #   b: [x, y, z] end position
-    #   t: Desired return time
-    #   tF: Total duration of interpolation
-    # Return:
-    #   [x, y, z] position of quadcopter at time t    
-    def linInter(self, a, b, t, tF):
-        delta = b - a
-        returnPos = ((delta / tF) * t) + a
-        pass
-    
         
-    # Circularly interpolates between the start and end positions
+        
+    # Querys the world map to check is a point exists in C-free.
     # Inputs:
-    #   a: [x, y, z] start position
-    #   b: [x, y, z] end position
-    #   t: Desired return time
-    #   tF: Total duration of interpolation
+    #   x: x coordinate of the point
+    #   y: y coordinate of the point
+    #   z: z coordinate of the point
     # Return:
-    #   [x, y, z] position of quadcopter at time t    
-    def cirInter(self, a, b, t, tF):
-        pass
+    #   True if the point exists in C-free.
+    #   False if the point exists in C-obs.
+    def get_occupancy_data(self, x, y, z=1):
+        if(self.isStandAlone):
+            return self.world[x, y]
+        else:
+            #t1 = time.time()
+            occ = self.worldData.get_occupancy_2d(float(x)*occupancy_scale,float(y)*occupancy_scale,1)
+            #t2 = time.time()
+            #print("Occ Check time "+ str(t2-t1))
+            #print(occ, x,y, float(x)*occupancy_scale,float(y)*occupancy_scale)
+            return occ
+
 
 
 '''
@@ -597,4 +658,3 @@ if __name__ == '__main__':
         mp = MotionPlanner(True)
         mp.setup()
         mp.motionControl()
-    
