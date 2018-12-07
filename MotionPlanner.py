@@ -335,7 +335,13 @@ class MotionPlanner():
                 ind = index
         return nearest, ind
         
-                    
+    
+    # Generates a random point towards which to extent. Will choose the goal as a point at random.
+    # Input:
+    #   gap: A discontinuity over which to perform the RRT* motion planning. 
+    #   attempt: The current attempt number. Used to expand the seach area after failed attempts.
+    # Return:
+    #   newSamp: Randomly generated point as a Node.
     def sample(self, gap, attempt):
         a = rand.random()
         if a >= 0.95:
@@ -363,8 +369,12 @@ class MotionPlanner():
         return newSamp
 
     
-    # Creates a 2-D top-down view of the motion path
-    def plotMotion(self, solutions, disc):
+    # Plots the entirety of the quadcopter motion on a 2D graph.
+    # Inputs:
+    #   solutions: A list of RRT* solutions as a list of node locations.
+    # Return:
+    #   None
+    def plotMotion(self, solutions):
         finalPath = []
         if(self.isStandAlone):
             plt.clf()
@@ -414,6 +424,11 @@ class MotionPlanner():
             plt.show()
 
 
+    # Appends sub-paths into a single solution path.
+    # Inputs:
+    #   solutions: A list of RRT* solutions as a list of node locations
+    # Return:
+    #   finalPath: The solution path as a list of intermediate points
     def generateFinalPath(self, solutions):
         finalPath = []
         discNum = 0
@@ -428,6 +443,11 @@ class MotionPlanner():
         return finalPath
 
 
+    # Creates the desired trajectory of a quadcopter arcing around a target between to points.
+    # Inputs:
+    #   None
+    # Return:
+    #   path: The desired arc trajectory as a sequential list of points.
     def createPlanarArc(self):
         path = []
         radStart = self.planarDist(self.start, self.target)     #Radius about the target at the start of the arc
@@ -608,9 +628,6 @@ class Node():
     def __init__(self, x, y):
         self.pos = [x, y]
         self.z = 1.0
-        self.g = 0.0
-        self.h = 0.0
-        self.f = 0.0
         self.cost = 0.0
         self.parent = [None, None]
         self.parentInd = None
