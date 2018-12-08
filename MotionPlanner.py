@@ -9,13 +9,14 @@ import random as rand
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from get_model import *
+from pylab import savefig
 
 occupancy_scale = 0.01
 
 
 class MotionPlanner():
     
-    def __init__(self, isStandAlone=False, rate=0):
+    def __init__(self, isStandAlone=False, rate=0, clockwise=True):
         # Global variables
         self.timeReset = False
         self.end = [180, 600, 1]                                    # x, y, z
@@ -27,7 +28,7 @@ class MotionPlanner():
         self.cycleTime = 0.1                                        # Allows the main loop to run once every X seconds
         self.motionTime = 10.0                                      # Total time to complete motion in seconds
         self.angularChange = 0.0                                    # Angle between start and end with centerpoint at target
-        self.clockwise = True
+        self.clockwise = clockwise
         self.printouts = False
         self.arc = []
         self.expandDist = 15
@@ -109,7 +110,7 @@ class MotionPlanner():
             temp = self.isStandAlone
             if(printData):
                 self.isStandAlone = True
-            self.plotMotion(solutions, disc)
+            self.plotMotion(solutions)
             self.isStandAlone = temp
         else:
             self.finalPath = []
@@ -198,11 +199,19 @@ class MotionPlanner():
                         self.arc.append(rounded)
                         start = rounded
                 else:
-                    end = [int(round(arc[a+self.expandFactor][0])), int(round(arc[a+self.expandFactor][1]))]
-                    self.arc.append(None)
-                    self.arc.append(end)
-                    disc = Disc(start, end)
-                    discontinuities.append(disc)
+                    # Added Conditional as a defensive measure
+                    if(a+self.expandFactor < len(arc)):
+                        end = [int(round(arc[a+self.expandFactor][0])), int(round(arc[a+self.expandFactor][1]))]
+                        self.arc.append(None)
+                        self.arc.append(end)
+                        disc = Disc(start, end)
+                        discontinuities.append(disc)
+                    else:
+                        print("###############################")
+                        print("Arc out of range")
+                        print("###############################")
+                        print(a, self.expandFactor)
+
                     gap = False
                 
             else:

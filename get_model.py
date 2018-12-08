@@ -132,10 +132,9 @@ class ObjectPositionCollector(object):
         except rospy.ServiceException, e:
             print("Service Failed", e)
 
-    def draw_objects(self):
+    def draw_objects(self, pause=False):
        # print("Stuff")
-        mp.pyplot.clf()
-        plt.axis([-10,10,-10,10])
+        plt.axis([-20,20,-10,20])
         plt.grid(True)
         for o in self.objects:
             obj = self.objects[o]
@@ -151,8 +150,8 @@ class ObjectPositionCollector(object):
        # for x in range (-5, 5):
         #    for y in range(-5, 5):
          #       print("Checking x,y", x, y, self.get_occupancy_2d(x, y, 0.5))
-                
-        #plt.pause(1)
+        if(pause):        
+            plt.pause(1)
     def get_occupancy_2d(self, _x, _y, radius):
         for o in self.objects:
             obj = self.objects[o]
@@ -179,7 +178,9 @@ class ObjectPositionCollector(object):
             #print(_x,_y, radius, polygon)
             check = isInside(polygon, 4, (_x,_y))
             if(check):
+                #print("Occupied", _x,_y)
                 return True
+       # print("Free", _x,_y)
         return False
     def get_quadcopter(self):
         return self.quadcopter

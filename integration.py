@@ -4,16 +4,101 @@ import matplotlib as mp
 import matplotlib.pyplot as plt
 from MotionPlanner import *
 from get_model import *
+from pylab import savefig
+from twisted.trial._dist.workercommands import Start
+from numpy.distutils import line_endings
 
-rate = 20
+
+rate = 0.1
 occupancy_scale = 0.01
 
-mp = MotionPlanner()
+mp = MotionPlanner(clockwise=False)
 ob = ObjectPositionCollector()
+points = []
 
 def init():
+    global points
     print("Init")
     mp.setWorldGetter(ob)
+     #self.timeReset = True
+    t1 = time.time()
+    updateData()
+
+    #Get quadcopter data
+    quadcopter = ob.get_quadcopter()
+    qPosition = quadcopter.get_pos(occupancy_scale)
+    qOrientation = quadcopter.get_twist()
+    # Get Target Data
+    target = ob.get_target()
+    tPosition = target.get_pos(occupancy_scale)
+    tOrientation = target.get_twist()
+
+    (l1, l2, a1, a2) = generate_params(qPosition, tPosition, 3.5/occupancy_scale, 270)
+
+    line_params = Disc(l1, l2)
+    mp.set_start(a1)
+    mp.set_end(a2)
+    mp.set_currentPose(qOrientation)
+    mp.set_target(tPosition)
+    
+    print("Start line ",l1)
+    print("End line ",l2)
+    print("Start Arc", a1)
+    print("End Arc ",a2)
+    print("Quad", qPosition)
+    print("Target",tPosition)
+
+    t2 = time.time()
+    print("Update Time = "+ str(t2-t1))
+    t1 = time.time()
+    plt.clf()
+    line = mp.RRTstar(line_params, 0)
+    for pt in reversed(line): 
+        points.append(pt) 
+    mp.motionControl(False)
+    points += mp.finalPath
+    
+    ob.draw_objects()
+    for a in range (0, (len(points)-1)):
+        print([points[a][0]*occupancy_scale, points[a+1][1]*occupancy_scale], [points[a][0]*occupancy_scale, points[a+1][1]*occupancy_scale])
+        plt.plot([points[a][0]*occupancy_scale, points[a+1][0]*occupancy_scale], [points[a][1]*occupancy_scale, points[a+1][1]*occupancy_scale], "r")
+
+    savefig("integration.png")
+    t2 = time.time()
+    print("Motion Planning Time = "+ str(t2-t1))
+
+def generate_params(start_position, target_position, radius, full_angle):
+    # Define the Start point of the RRT to get to Arc
+    line_start = start_position
+    # Determine the End point of the RRT to get to the arc (also the start of the arc)
+    x1 = start_position[0]
+    y1 = start_position[1]
+    x2 = target_position[0]
+    y2 = target_position[1]
+    d = math.sqrt(math.pow(y2-y1, 2) + math.pow(x2-x1, 2))
+    adj = (x2-x1)
+    hyp = d
+    xe = 0
+    ye = 0
+    theta = 0
+    if (hyp != 0):
+        theta = math.acos((x2-x1)/hyp)
+        ye = (d-radius) * math.sin(theta) + y1
+        xe = (d-radius) * math.cos(theta) + x1
+    line_end = [xe, ye, start_position[2]]
+    arc_start = line_end
+    print(arc_start)
+    print(theta, full_angle)
+    theta = theta + math.radians(full_angle)
+    print("New Theta", theta)
+    print(radius, x2, y2)
+    print(math.sin(theta), math.cos(theta))
+    ye = y2 - (radius) * math.sin(theta)
+    xe = x2 - (radius) * math.cos(theta)
+    print(xe, ye)
+    arc_end = [xe, ye, start_position[2]] 
+    
+    return (line_start, line_end, arc_start, arc_end)
     
     
 # Sends quadcopter velocity commands via a ROS publisher
@@ -34,28 +119,7 @@ def updateData():
     #currentPose
     # Update the World Data
     ob.update_world_data()
-    #Get quadcopter data
-    quadcopter = ob.get_quadcopter()
-    qPosition = quadcopter.get_pos(occupancy_scale)
-    qOrientation = quadcopter.get_twist()
-    # Get Target Data
-    target = ob.get_target()
-    tPosition = target.get_pos(occupancy_scale)
-    tOrientation = target.get_twist()
-    
-    #qPosition[0] = tPosition[0] - 3/occupancy_scale #(tPosition[0] - qPosition[0])
-    #qPosition[1] = tPosition[1] - 3/occupancy_scale #(tPosition[1] - qPosition[1])
-    #qPosition[2] = tPosition[2] + 0/occupancy_scale #(tPosition[2] - qPosition[2])
-    # TODO FIgure this out
-    ePosition = [0,0,0]
-    ePosition[0] = tPosition[0] + 3/occupancy_scale #(tPosition[0] - qPosition[0])
-    ePosition[1] = tPosition[1] #+ 3/occupancy_scale #(tPosition[1] - qPosition[1])
-    ePosition[2] = tPosition[2] + 0 #(tPosition[2] - qPosition[2]) 
-    #print('ePosition = ',ePosition)
-    mp.set_start(qPosition)
-    mp.set_end(ePosition)
-    mp.set_currentPose(qOrientation)
-    mp.set_target(tPosition)
+
     pass
 
 
@@ -69,11 +133,7 @@ def run(rate):
     t2 = time.time()
     print("Update Time = "+ str(t2-t1))
     t1 = time.time()
-    mp.motionControl(False)
-    t2 = time.time()
-    print("Motion Time = "+ str(t2-t1))
-    t1 = time.time()
-    sendCommands(mp.finalPath)
+    sendCommands(points)
     t2 = time.time()
     print("Controls Time = "+ str(t2-t1))
     end = time.time()
