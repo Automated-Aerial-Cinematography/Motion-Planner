@@ -4,6 +4,7 @@ import matplotlib as mp
 import matplotlib.pyplot as plt
 from MotionPlanner import *
 from get_model import *
+from move_drone import *
 from pylab import savefig
 from twisted.trial._dist.workercommands import Start
 from numpy.distutils import line_endings
@@ -103,13 +104,21 @@ def generate_params(start_position, target_position, radius, full_angle):
     
 # Sends quadcopter velocity commands via a ROS publisher
 def sendCommands(flightPath):
+    
     # Use flightPath[0] as your next point
-    if(len(flightPath) > 1):
-        x = flightPath[1][0]*occupancy_scale
-        y = flightPath[1][1]*occupancy_scale
-        #x = flightPath[1][0]*occupancy_scale
-        print(flightPath[1],x,y)
-    pass
+    for i in range(len(flightPath)):
+        flightPath[i][0] = flightPath[i][0]*occupancy_scale
+        flightPath[i][1] = flightPath[i][1]*occupancy_scale
+    print (flightPath)
+    mv_dr = Move_Drone(flightPath)
+    mv_dr.main()
+        # for j in range
+    # if(len(flightPath) > 1):
+    #     x = flightPath[1][0]*occupancy_scale
+    #     y = flightPath[1][1]*occupancy_scale
+    #     #x = flightPath[1][0]*occupancy_scale
+    #     print(flightPath[1],x,y)
+    # pass
     #velocity_publisher.publish(vel_msg)
 
 
