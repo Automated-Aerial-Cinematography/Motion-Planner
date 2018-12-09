@@ -104,11 +104,13 @@ def generate_params(start_position, target_position, radius, full_angle):
     
 # Sends quadcopter velocity commands via a ROS publisher
 def sendCommands(flightPath):
-    
+    # new_path = []
     # Use flightPath[0] as your next point
     for i in range(len(flightPath)):
         flightPath[i][0] = flightPath[i][0]*occupancy_scale
         flightPath[i][1] = flightPath[i][1]*occupancy_scale
+        # if i%2 == 0:
+        #     new_path.append(flightPath[i])
     print (flightPath)
     mv_dr = Move_Drone(flightPath)
     mv_dr.main()
