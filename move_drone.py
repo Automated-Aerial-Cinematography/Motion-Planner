@@ -18,7 +18,7 @@ class Move_Drone():
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size = 1)
 
         self.speed = Twist()
-        self.r = rospy.Rate(4)
+        self.r = rospy.Rate(1)
         # To access co-ordinates
         self.location = Point()
 
@@ -94,15 +94,21 @@ class Move_Drone():
 
                 else:
                     self.speed.linear.z = 0.0
+                    # Handling what the turn rate should be. Default to this value then check if it needs to be lower
+                    turn_rate = 0.3
+                    if(abs(self.angle_with_goal - self.yaw) < 1.5*turn_rate):
+                        # Since the threshold is not guaranteed to be less than turn_rate we don't want to accidentally bump up the turn rate.
+                        turn_rate = min(self.threshold - 0.01, turn_rate - 0.01)
+                        
                     if abs(self.angle_with_goal - self.yaw) > self.threshold and self.angle_with_goal > self.yaw:
-                        self.turn = self.turn_left(0.3)
+                        self.turn = self.turn_left(turn_rate)
 
                         if self.dist_from_target <= 0.1:
                             Stop = self.stop()
                             i += 1
 
                     elif abs(self.angle_with_goal - self.yaw) > -0.1 and self.angle_with_goal < self.yaw:
-                        self.turn = self.turn_right(0.3)
+                        self.turn = self.turn_right(turn_rate)
 
                         if self.dist_from_target <= 0.1:
                             Stop = self.stop()
