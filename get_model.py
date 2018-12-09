@@ -105,8 +105,8 @@ class ObjectPositionCollector(object):
                         if(model_properties.success):
                             #for link in model_properties.body_names:
                             # For the time being, I think the first link is the root, unless something indicates otherwise.
-                            link = model_properties.body_names[0]
-                            model_state = self.get_model_state(model, link)
+                            #link = model_properties.body_names[0]
+                            model_state = self.get_model_state(model, "")
                             #print(model_state)
                             if(model_state.success):
                                # print "Model Name", model, link, msg_world.sim_time
