@@ -105,8 +105,7 @@ class Move_Drone():
                 self.dist_from_goal = math.sqrt(self.delta_x*self.delta_x + self.delta_y*self.delta_y) 
                 #print('Path_x:{},Path_y:{},Path_z:{}' .format(self.Path[i][0],self.Path[i][1],3))
                 #print('drone_x:{},drone_y{},drone_z{}' .format(drone_x,drone_y,drone_z))
-                print("Angle with Goal: ", self.angle_with_goal,"Yaw: ", self.yaw)
-  #              print()
+               # print("Angle with Goal: ", self.angle_with_goal,"Yaw: ", self.yaw)
                # print("Position: ", self.drone_x, self.drone_y, self.drone_z)
                # print("Target: ", self.target[0], self.target[1])
     
@@ -116,12 +115,16 @@ class Move_Drone():
                 else:
                     self.speed.linear.z = 0.0
                     # Handling what the turn rate should be. Default to this value then check if it needs to be lower
-                    turn_rate = 0.3
+                    turn_rate = 0.5
                    # print("Angle with target ", self.angle_with_target, "Yaw", self.yaw, "Check ", (abs(self.angle_with_target-self.yaw) > self.threshold))
                     if(abs(self.angle_with_target-self.yaw) < 1.5*turn_rate):
                         # Since the threshold is not guaranteed to be less than turn_rate we don't want to accidentally bump up the turn rate.
                         turn_rate = min(self.threshold - 0.01, turn_rate - 0.01)
-                    
+                    #if(self.angle_with_target < 0):
+                    self.angle_with_target += math.pi
+                    #if(self.yaw < 0):
+                    self.yaw+=math.pi
+                        
                     change_in_angle = self.angle_with_target - self.yaw
                     dir = 0
                     if(change_in_angle != 0.0):
@@ -150,12 +153,15 @@ class Move_Drone():
                     vel_to_move = 0.3
                     if(abs(self.dist_from_goal) < 3.0*vel_to_move):
                         vel_to_move = 0.15
-                    move = self.move_in_direction(vel_to_move, (self.angle_with_goal-self.yaw))
+                    move = self.move_in_direction(vel_to_move, (self.angle_with_goal))
                     #print("Dist to ", i, " = ", self.dist_from_goal, "Movement", vel_to_move, "With angle ", self.angle_with_goal)
                     if self.dist_from_goal <= 0.15:
                         Stop = self.stop()
                         i += 1
-    
+                        
+                        
+                    self.angle_with_target -= math.pi
+                    self.yaw-=math.pi
             self.pub.publish(self.speed)
             self.r.sleep()
 # Path = [[-3.000171556929056, -0.0021987329929744285], [-6.000171556929056, -0.6021987329929744], [-10.300171556929056, 0.19780126700702566], [-13.000171556929057, 1.5978012670070258], [-16.600171556929055, 4.1978012670070255], [-18.500171556929054, 8.197801267007026], [-18.900171556929056, 12.597801267007025], [-19.400171556929056, 16.697801267007026], [-19.400171556929056, 20.997801267007027], [-18.800171556929055, 24.797801267007028], [-17.300171556929055, 27.397801267007026], [-15.500171556929057, 29.797801267007028], [-15.400171556929056, 33.397801267007026], [-16.400171556929056, 36.897801267007026], [-15.900171556929054, 40.69780126700703], [-13.100171556929057, 44.19780126700702], [-10.900171556929054, 46.397801267007026], [-8.000171556929056, 49.49780126700703], [-3.6001715569290553, 50.397801267007026], [-1.6001715569290553, 53.29780126700703], [-0.03235535490787814, 57.385999980841234], [0.0, 57.300000000000004], [4.9, 57.7], [9.7, 58.8], [14.399999999999999, 60.5], [18.700000000000003, 62.800000000000004], [22.7, 65.8], [26.200000000000003, 69.3], [29.2, 73.2], [27.0, 74.4], [24.0, 74.3], [20.300000000000004, 73.8], [17.9, 77.2], [17.0, 81.5], [19.1, 85.4], [19.3, 89.3], [19.1, 93.4], [19.6, 97.6], [19.8, 101.4], [19.5, 104.9], [18.6, 108.6], [21.099999999999998, 111.8], [25.300000000000004, 112.9], [28.900000000000002, 112.10000000000001], [28.900000000000002, 112.10000000000001], [25.8, 116.0], [22.200000000000003, 119.39999999999999], [18.2, 122.2], [18.2, 119.2], [17.4, 114.9], [16.6, 110.8], [12.3, 110.0], [8.3, 110.1], [4.2, 109.39999999999999], [0.5, 111.6], [-2.7, 113.2], [-6.7, 113.70000000000002], [-10.9, 112.8], [-14.2, 115.60000000000001], [-18.0, 117.8], [-22.0, 119.7], [-22.0, 119.7], [-25.6, 116.30000000000001], [-28.700000000000003, 112.5], [-31.200000000000003, 108.3], [-33.2, 103.70000000000002], [-34.4, 98.9], [-35.0, 94.0], [-35.1, 92.4]]
