@@ -74,7 +74,7 @@ class ObjectPositionCollector(object):
         if self.get_model_properties is None:
             try:
                 # Handle for retrieving model properties
-                rospy.wait_for_service('/gazebo/get_model_properties')
+                rospy.wait_for_service('/gazebo/get_model_properties',timeout=0.1)
                 self.get_model_properties = rospy.ServiceProxy('/gazebo/get_model_properties',
                                                      GetModelProperties)
             except rospy.ROSException:
@@ -82,7 +82,7 @@ class ObjectPositionCollector(object):
         if self.get_model_state is None:
             try:
                # Handle for retrieving model properties
-                rospy.wait_for_service('/gazebo/get_joint_properties')
+                rospy.wait_for_service('/gazebo/get_joint_properties',timeout=0.1)
                 self.get_model_state = rospy.ServiceProxy('/gazebo/get_model_state',
                                                      GetModelState)
             except rospy.ROSException:
@@ -182,7 +182,19 @@ class ObjectPositionCollector(object):
                 return True
        # print("Free", _x,_y)
         return False
-    def get_quadcopter(self):
+    def get_quadcopter(self, poll=False):
+        if(poll == True):
+            #self.get_proxy_handles()
+            # Get the Position Data
+            try:
+                model_state = self.get_model_state(quadcopter_name, "")
+                #print(model_state)
+                if(model_state.success):
+                    self.quadcopter.set_pos(model_state.pose.position.x, model_state.pose.position.y, model_state.pose.position.z)
+                    self.quadcopter.set_twist(model_state.pose.orientation.x, model_state.pose.orientation.y, model_state.pose.orientation.z, model_state.pose.orientation.w)
+                #self.draw_objects()
+            except rospy.ServiceException, e:
+                print("Service Failed", e)
         return self.quadcopter
     def get_target(self):
         return self.target

@@ -10,15 +10,17 @@ from twisted.trial._dist.workercommands import Start
 from numpy.distutils import line_endings
 
 
-rate = 0.1
+rate = 0.05
 occupancy_scale = 0.01
 
 mp = MotionPlanner(clockwise=False)
 ob = ObjectPositionCollector()
 points = []
-
+mv_dr = None
 def init():
     global points
+    global mv_dr
+
     print("Init")
     mp.setWorldGetter(ob)
      #self.timeReset = True
@@ -65,6 +67,13 @@ def init():
         plt.plot([points[a][0]*occupancy_scale, points[a+1][0]*occupancy_scale], [points[a][1]*occupancy_scale, points[a+1][1]*occupancy_scale], "r")
 
     savefig("integration.png")
+    
+    for i in range(len(points)):
+        points[i][0] = points[i][0]*occupancy_scale
+        points[i][1] = points[i][1]*occupancy_scale
+        tPosition = target.get_pos(occupancy_scale)
+    tPosition = target.get_pos(1)
+    mv_dr = Move_Drone(points,tPosition)
     t2 = time.time()
     print("Motion Planning Time = "+ str(t2-t1))
 
@@ -103,20 +112,19 @@ def generate_params(start_position, target_position, radius, full_angle):
     
     
 # Sends quadcopter velocity commands via a ROS publisher
-def sendCommands(flightPath):
-    print("Starting to send commands")
+def sendCommands(quad_position=None, quad_orientation=None):
+    #print("Starting to send commands")
+    global mv_dr
     # new_path = []
     # Use flightPath[0] as your next point
-    for i in range(len(flightPath)):
-        flightPath[i][0] = flightPath[i][0]*occupancy_scale
-        flightPath[i][1] = flightPath[i][1]*occupancy_scale
+
         # if i%2 == 0:
         #     new_path.append(flightPath[i])
     #print (flightPath)
-    target = ob.get_target()
-    tPosition = target.get_pos(occupancy_scale)
-    mv_dr = Move_Drone(flightPath,tPosition)
-    mv_dr.main()
+    if(mv_dr != None):
+        mv_dr.main(quad_position, quad_orientation)
+    else:
+        print("Move Drone is None")
         # for j in range
     # if(len(flightPath) > 1):
     #     x = flightPath[1][0]*occupancy_scale
@@ -133,25 +141,28 @@ def updateData():
     #currentPose
     # Update the World Data
     ob.update_world_data()
-
     pass
 
 
 # Main loop cycle
 def run(rate):
-    print("Top of a loop")
+    #print("Top of a loop")
     #self.timeReset = True
-    start = time.time()
+    #start = time.time()
     t1 = time.time()
-    updateData()
+    #updateData()
+    #quadcopter = ob.get_quadcopter(True)
+    #qPosition = quadcopter.get_pos(1)
+    #qOrientation = quadcopter.get_twist()
     t2 = time.time()
     print("Update Time = "+ str(t2-t1))
     t1 = time.time()
-    sendCommands(points)
+    #sendCommands(qPosition, qOrientation)
+    sendCommands()
     t2 = time.time()
     print("Controls Time = "+ str(t2-t1))
-    end = time.time()
-    print("Total loop time = "+ str(end-start)+"\n")
+    #end = time.time()
+    #print("Total loop time = "+ str(end-start)+"\n")
 
 if __name__ == '__main__':
     try:
@@ -160,7 +171,8 @@ if __name__ == '__main__':
         # init the program
         init()
         # Set the run rate
-        update_timer = rospy.Timer(rospy.Duration(rate), run)
+        run(rate)
+        #update_timer = rospy.Timer(rospy.Duration(rate), run)
         # Let ROS spin
         rospy.spin()
 
