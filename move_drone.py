@@ -99,14 +99,14 @@ class Move_Drone():
                 self.delta_x = self.Path[i][0] - self.drone_x
                 self.delta_y = self.Path[i][1] - self.drone_y
                 self.delta_z = 2 - self.drone_z
-                self.angle_with_goal = math.atan2(self.delta_y,self.delta_x) - math.pi/2
+                self.angle_with_goal = math.atan2(self.delta_y,self.delta_x) #- math.pi/2
                 self.angle_with_target = math.atan2((self.target[1]-self.drone_y),(self.target[0] - self.drone_x)) #- math.pi/2
     
                 self.dist_from_goal = math.sqrt(self.delta_x*self.delta_x + self.delta_y*self.delta_y) 
                 #print('Path_x:{},Path_y:{},Path_z:{}' .format(self.Path[i][0],self.Path[i][1],3))
                 #print('drone_x:{},drone_y{},drone_z{}' .format(drone_x,drone_y,drone_z))
-               # print("Angle with target: ", self.angle_with_target)
-               # print("Yaw: ", self.yaw)
+                print("Angle with Goal: ", self.angle_with_goal,"Yaw: ", self.yaw)
+  #              print()
                # print("Position: ", self.drone_x, self.drone_y, self.drone_z)
                # print("Target: ", self.target[0], self.target[1])
     
@@ -150,7 +150,7 @@ class Move_Drone():
                     vel_to_move = 0.3
                     if(abs(self.dist_from_goal) < 3.0*vel_to_move):
                         vel_to_move = 0.15
-                    move = self.move_in_direction(vel_to_move, (self.angle_with_goal))
+                    move = self.move_in_direction(vel_to_move, (self.angle_with_goal-self.yaw))
                     #print("Dist to ", i, " = ", self.dist_from_goal, "Movement", vel_to_move, "With angle ", self.angle_with_goal)
                     if self.dist_from_goal <= 0.15:
                         Stop = self.stop()
