@@ -153,7 +153,8 @@ class Move_Drone():
                     vel_to_move = 0.3
                     if(abs(self.dist_from_goal) < 1.5*vel_to_move):
                         vel_to_move = 0.1
-                    move = self.move_in_direction(vel_to_move, ((self.angle_with_goal+math.pi + self.yaw)-math.pi))
+                    # TODO - This should really account for the Yaw of the quadcopter, so it knows what the x is
+                    move = self.move_in_direction(vel_to_move, self.angle_with_goal-self.yaw+math.pi)
                     print("Dist to ", i, " = ", self.dist_from_goal, "Movement", vel_to_move, "With Goal angle ", self.angle_with_goal, "input", (self.angle_with_goal+math.pi + self.yaw))
                     if self.dist_from_goal <= 0.25:
                         Stop = self.stop()
