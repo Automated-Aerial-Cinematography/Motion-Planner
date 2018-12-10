@@ -153,8 +153,8 @@ class Move_Drone():
                     vel_to_move = 0.3
                     if(abs(self.dist_from_goal) < 1.5*vel_to_move):
                         vel_to_move = 0.1
-                    move = self.move_in_direction(vel_to_move, (self.angle_with_goal))
-                    print("Dist to ", i, " = ", self.dist_from_goal, "Movement", vel_to_move, "With angle ", self.angle_with_goal)
+                    move = self.move_in_direction(vel_to_move, ((self.angle_with_goal+math.pi + self.yaw)-math.pi))
+                    print("Dist to ", i, " = ", self.dist_from_goal, "Movement", vel_to_move, "With Goal angle ", self.angle_with_goal, "input", (self.angle_with_goal+math.pi + self.yaw))
                     if self.dist_from_goal <= 0.25:
                         Stop = self.stop()
                         i += 1
