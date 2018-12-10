@@ -115,7 +115,7 @@ class Move_Drone():
                 else:
                     self.speed.linear.z = 0.0
                     # Handling what the turn rate should be. Default to this value then check if it needs to be lower
-                    turn_rate = 0.5
+                    turn_rate = 0.3
                    # print("Angle with target ", self.angle_with_target, "Yaw", self.yaw, "Check ", (abs(self.angle_with_target-self.yaw) > self.threshold))
                     if(abs(self.angle_with_target-self.yaw) < 1.5*turn_rate):
                         # Since the threshold is not guaranteed to be less than turn_rate we don't want to accidentally bump up the turn rate.
@@ -129,7 +129,7 @@ class Move_Drone():
                     dir = 0
                     if(change_in_angle != 0.0):
                         dir = abs(change_in_angle)/ change_in_angle
-                    
+                    print("Angle with Goal: ", self.angle_with_goal,"Yaw: ", self.yaw, "Angle with Target: ", self.angle_with_target,"Dir: ", dir, "change In angle", change_in_angle)
                     if abs(self.angle_with_target-self.yaw) > self.threshold and dir == 1:
                         self.turn = self.turn_left(turn_rate)
                         #print("Turning Left ", turn_rate, self.angle_with_target, self.yaw)
@@ -151,11 +151,11 @@ class Move_Drone():
                         
                     #else:
                     vel_to_move = 0.3
-                    if(abs(self.dist_from_goal) < 3.0*vel_to_move):
-                        vel_to_move = 0.15
+                    if(abs(self.dist_from_goal) < 1.5*vel_to_move):
+                        vel_to_move = 0.1
                     move = self.move_in_direction(vel_to_move, (self.angle_with_goal))
-                    #print("Dist to ", i, " = ", self.dist_from_goal, "Movement", vel_to_move, "With angle ", self.angle_with_goal)
-                    if self.dist_from_goal <= 0.15:
+                    print("Dist to ", i, " = ", self.dist_from_goal, "Movement", vel_to_move, "With angle ", self.angle_with_goal)
+                    if self.dist_from_goal <= 0.25:
                         Stop = self.stop()
                         i += 1
                         
