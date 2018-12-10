@@ -61,7 +61,7 @@ def init():
     
     ob.draw_objects()
     for a in range (0, (len(points)-1)):
-        print([points[a][0]*occupancy_scale, points[a+1][1]*occupancy_scale], [points[a][0]*occupancy_scale, points[a+1][1]*occupancy_scale])
+        #print([points[a][0]*occupancy_scale, points[a+1][1]*occupancy_scale], [points[a][0]*occupancy_scale, points[a+1][1]*occupancy_scale])
         plt.plot([points[a][0]*occupancy_scale, points[a+1][0]*occupancy_scale], [points[a][1]*occupancy_scale, points[a+1][1]*occupancy_scale], "r")
 
     savefig("integration.png")
@@ -88,15 +88,15 @@ def generate_params(start_position, target_position, radius, full_angle):
         xe = (d-radius) * math.cos(theta) + x1
     line_end = [xe, ye, start_position[2]]
     arc_start = line_end
-    print(arc_start)
-    print(theta, full_angle)
+    #print(arc_start)
+    #print(theta, full_angle)
     theta = theta + math.radians(full_angle)
-    print("New Theta", theta)
-    print(radius, x2, y2)
-    print(math.sin(theta), math.cos(theta))
+    #print("New Theta", theta)
+    #print(radius, x2, y2)
+   # print(math.sin(theta), math.cos(theta))
     ye = y2 - (radius) * math.sin(theta)
     xe = x2 - (radius) * math.cos(theta)
-    print(xe, ye)
+    #print(xe, ye)
     arc_end = [xe, ye, start_position[2]] 
     
     return (line_start, line_end, arc_start, arc_end)
@@ -104,6 +104,7 @@ def generate_params(start_position, target_position, radius, full_angle):
     
 # Sends quadcopter velocity commands via a ROS publisher
 def sendCommands(flightPath):
+    print("Starting to send commands")
     # new_path = []
     # Use flightPath[0] as your next point
     for i in range(len(flightPath)):
@@ -111,8 +112,10 @@ def sendCommands(flightPath):
         flightPath[i][1] = flightPath[i][1]*occupancy_scale
         # if i%2 == 0:
         #     new_path.append(flightPath[i])
-    print (flightPath)
-    mv_dr = Move_Drone(flightPath)
+    #print (flightPath)
+    target = ob.get_target()
+    tPosition = target.get_pos(occupancy_scale)
+    mv_dr = Move_Drone(flightPath,tPosition)
     mv_dr.main()
         # for j in range
     # if(len(flightPath) > 1):
