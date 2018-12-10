@@ -128,7 +128,11 @@ class Move_Drone():
                     change_in_angle = self.angle_with_target - self.yaw
                     dir = 0
                     if(change_in_angle != 0.0):
-                        dir = abs(change_in_angle)/ change_in_angle
+                        if(abs(self.angle_with_target - self.yaw) < abs(self.yaw - self.angle_with_target) ):
+                            dir = -1
+                        else:
+                            dir = 1
+                        #dir = abs(change_in_angle)/ change_in_angle
                     print("Angle with Goal: ", self.angle_with_goal,"Yaw: ", self.yaw, "Angle with Target: ", self.angle_with_target,"Dir: ", dir, "change In angle", change_in_angle)
                     if abs(self.angle_with_target-self.yaw) > self.threshold and dir == 1:
                         self.turn = self.turn_left(turn_rate)
